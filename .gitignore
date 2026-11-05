@@ -29,6 +29,13 @@ htmlcov/
 .env.*
 !.env.example
 
+# Logs (keep the folder)
+logs/*.log
+
+# Local SQLite databases
+*.db
+*.sqlite3
+
 # Editors / OS
 .idea/
 .vscode/

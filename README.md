@@ -1,4 +1,8 @@
-# datake
+# Datake
+
+Automated data processing tool for CSV and Excel files.
+
+This project is being built in phases. **Phase 1** is in place: project layout and CSV reading.
 
 ## Setup
 
@@ -8,13 +12,13 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Usage
+## Phase 1 usage
 
 ```bash
-datake
-# or
-python -m datake
+datake read data/input/sample_customers.csv
 ```
+
+Configuration lives in `config/settings.json`. Paths in that file are relative to the project root.
 
 ## Tests
 

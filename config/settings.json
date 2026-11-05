@@ -1,0 +1,18 @@
+{
+  "paths": {
+    "input_dir": "data/input",
+    "processed_dir": "data/processed",
+    "reports_dir": "data/reports",
+    "log_file": "logs/datake.log"
+  },
+  "files": {
+    "supported_extensions": [".csv"]
+  },
+  "csv": {
+    "encodings": ["utf-8", "utf-8-sig", "latin-1"],
+    "delimiter": null
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}
