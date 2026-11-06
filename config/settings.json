@@ -14,5 +14,36 @@
   },
   "logging": {
     "level": "INFO"
+  },
+  "validation": {
+    "required_columns": ["customer_id", "email"],
+    "date_columns": ["signup_date"],
+    "numeric_columns": ["amount"],
+    "unique_columns": ["customer_id"],
+    "email_columns": ["email"],
+    "numeric_constraints": {
+      "amount": { "min": 0 }
+    },
+    "max_examples": 5
+  },
+  "cleaning": {
+    "standardize_column_names": true,
+    "column_aliases": {
+      "Customer Name": "customer_name"
+    },
+    "fill_values": {
+      "customer_name": "Unknown",
+      "amount": 0
+    },
+    "drop_if_missing": ["customer_id", "email"],
+    "drop_duplicates": true,
+    "duplicate_subset": ["customer_id"],
+    "duplicate_keep": "first",
+    "date_format": "%Y-%m-%d",
+    "drop_invalid_dates": true,
+    "coerce_numeric": true,
+    "drop_invalid_numeric": true,
+    "clamp_numeric": true,
+    "drop_invalid_emails": true
   }
 }
