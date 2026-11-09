@@ -6,8 +6,10 @@ import argparse
 import sys
 from pathlib import Path
 
+from datake.automation import watch_input
 from datake.main import (
     clean_tabular_file,
+    load_runtime,
     merge_tabular_files,
     read_tabular_file,
     validate_tabular_file,
@@ -56,6 +58,21 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         type=Path,
         help="Files to merge (defaults to all supported files in data/input)",
+    )
+    watch_parser = subparsers.add_parser(
+        "watch",
+        help="Automatically process new files arriving in data/input",
+    )
+    watch_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Process the current batch and exit",
+    )
+    watch_parser.add_argument(
+        "--interval",
+        type=float,
+        default=None,
+        help="Polling interval in seconds (default: configured value)",
     )
     return parser
 
@@ -150,6 +167,14 @@ def main(argv: list[str] | None = None) -> int:
         elif failures < len(results):
             print("No compatible files to merge (columns did not match).")
         return 1 if failures == len(results) else 0
+
+    if args.command == "watch":
+        settings = load_runtime(args.config)
+        try:
+            watch_input(settings, once=args.once, interval=args.interval)
+        except KeyboardInterrupt:
+            print("Watch stopped.")
+        return 0
 
     parser.error(f"Unknown command: {args.command}")
     return 2

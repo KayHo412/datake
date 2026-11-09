@@ -30,12 +30,14 @@ class CleanResult:
     rows_out: int
     column_names: list[str] = field(default_factory=list)
     actions: list[str] = field(default_factory=list)
+    rejected_dataframe: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def clean_dataframe(dataframe: pd.DataFrame, settings: Settings) -> CleanResult:
     """Return a cleaned copy of *dataframe* according to ``settings.cleaning``."""
     working = dataframe.copy()
     actions: list[str] = []
+    rejected: list[pd.DataFrame] = []
     rows_in = len(working)
     rules = settings.cleaning
 
@@ -45,17 +47,17 @@ def clean_dataframe(dataframe: pd.DataFrame, settings: Settings) -> CleanResult:
         working = _standardize_columns(working, settings, actions)
 
     if rules.coerce_numeric:
-        working = _coerce_numeric(working, settings, actions)
-    working = _normalize_dates(working, settings, actions)
+        working = _coerce_numeric(working, settings, actions, rejected)
+    working = _normalize_dates(working, settings, actions, rejected)
 
     if rules.drop_invalid_emails:
-        working = _drop_invalid_emails(working, settings, actions)
+        working = _drop_invalid_emails(working, settings, actions, rejected)
 
     _fill_missing(working, settings, actions)
-    working = _drop_missing_required(working, settings, actions)
+    working = _drop_missing_required(working, settings, actions, rejected)
 
     if rules.drop_duplicates:
-        working = _drop_duplicates(working, settings, actions)
+        working = _drop_duplicates(working, settings, actions, rejected)
 
     _downcast_whole_numbers(working, settings)
     working = working.reset_index(drop=True)
@@ -65,6 +67,11 @@ def clean_dataframe(dataframe: pd.DataFrame, settings: Settings) -> CleanResult:
         rows_out=len(working),
         column_names=[str(column) for column in working.columns],
         actions=actions,
+        rejected_dataframe=(
+            pd.concat(rejected, ignore_index=True)
+            if rejected
+            else pd.DataFrame(columns=[*working.columns, "rejection_reason"])
+        ),
     )
     logger.info(
         "Cleaned dataset: %s rows in, %s rows out, %s actions",
@@ -124,16 +131,25 @@ def _standardize_columns(
     return dataframe
 
 
-def _without_rows(dataframe: pd.DataFrame, mask: pd.Series) -> pd.DataFrame:
+def _without_rows(
+    dataframe: pd.DataFrame,
+    mask: pd.Series,
+    rejected: list[pd.DataFrame],
+    reason: str,
+) -> pd.DataFrame:
     if not bool(mask.any()):
         return dataframe
-    return dataframe.loc[~mask]
+    removed = dataframe.loc[mask].copy()
+    removed["rejection_reason"] = reason
+    rejected.append(removed)
+    return dataframe.loc[~mask].copy()
 
 
 def _coerce_numeric(
     dataframe: pd.DataFrame,
     settings: Settings,
     actions: list[str],
+    rejected: list[pd.DataFrame],
 ) -> pd.DataFrame:
     rules = settings.cleaning
     constraints = settings.validation.numeric_constraints
@@ -144,7 +160,9 @@ def _coerce_numeric(
         invalid = parsed.isna() & ~missing_mask(dataframe[column])
         invalid_count = int(invalid.sum())
         if rules.drop_invalid_numeric and invalid_count:
-            dataframe = _without_rows(dataframe, invalid)
+            dataframe = _without_rows(
+                dataframe, invalid, rejected, f"non-numeric {column}"
+            )
             parsed = parsed.loc[dataframe.index]
             actions.append(
                 f"Dropped {invalid_count} row(s) with non-numeric {column!r}"
@@ -176,6 +194,7 @@ def _normalize_dates(
     dataframe: pd.DataFrame,
     settings: Settings,
     actions: list[str],
+    rejected: list[pd.DataFrame],
 ) -> pd.DataFrame:
     rules = settings.cleaning
     for column in settings.validation.date_columns:
@@ -185,12 +204,15 @@ def _normalize_dates(
         invalid = parsed.isna() & ~missing_mask(dataframe[column])
         invalid_count = int(invalid.sum())
         if rules.drop_invalid_dates and invalid_count:
-            dataframe = _without_rows(dataframe, invalid)
+            dataframe = _without_rows(
+                dataframe, invalid, rejected, f"invalid date in {column}"
+            )
             parsed = parsed.loc[dataframe.index]
             actions.append(
                 f"Dropped {invalid_count} row(s) with invalid dates in {column!r}"
             )
         formatted = parsed.dt.strftime(rules.date_format)
+        dataframe = dataframe.copy()
         dataframe[column] = formatted.where(parsed.notna(), pd.NA)
         actions.append(f"Normalized dates in {column!r} to {rules.date_format}")
     return dataframe
@@ -200,6 +222,7 @@ def _drop_invalid_emails(
     dataframe: pd.DataFrame,
     settings: Settings,
     actions: list[str],
+    rejected: list[pd.DataFrame],
 ) -> pd.DataFrame:
     for column in settings.validation.email_columns:
         if column not in dataframe.columns:
@@ -210,7 +233,9 @@ def _drop_invalid_emails(
         count = int(invalid.sum())
         if count == 0:
             continue
-        dataframe = _without_rows(dataframe, invalid)
+        dataframe = _without_rows(
+            dataframe, invalid, rejected, f"invalid email in {column}"
+        )
         actions.append(f"Dropped {count} row(s) with invalid email in {column!r}")
     return dataframe
 
@@ -235,6 +260,7 @@ def _drop_missing_required(
     dataframe: pd.DataFrame,
     settings: Settings,
     actions: list[str],
+    rejected: list[pd.DataFrame],
 ) -> pd.DataFrame:
     columns = [
         column
@@ -249,7 +275,9 @@ def _drop_missing_required(
     count = int(mask.sum())
     if count == 0:
         return dataframe
-    dataframe = _without_rows(dataframe, mask)
+    dataframe = _without_rows(
+        dataframe, mask, rejected, "missing required column"
+    )
     joined = ", ".join(columns)
     actions.append(f"Dropped {count} row(s) missing required column(s): {joined}")
     return dataframe
@@ -259,6 +287,7 @@ def _drop_duplicates(
     dataframe: pd.DataFrame,
     settings: Settings,
     actions: list[str],
+    rejected: list[pd.DataFrame],
 ) -> pd.DataFrame:
     subset = [
         column
@@ -270,7 +299,7 @@ def _drop_duplicates(
     count = int(duplicated.sum())
     if count == 0:
         return dataframe
-    dataframe = _without_rows(dataframe, duplicated)
+    dataframe = _without_rows(dataframe, duplicated, rejected, "duplicate row")
     target = ", ".join(subset) if subset else "all columns"
     actions.append(f"Dropped {count} duplicate row(s) using {target}")
     return dataframe

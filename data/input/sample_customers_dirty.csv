@@ -1,7 +1,0 @@
-customer_id,Customer Name,email,signup_date,amount
-1,Ada Lovelace,ada@example.com,2024-01-15,100.50
-2,Alan Turing,not-an-email,2024-02-01,200
-2,Alan Turing,not-an-email,2024-02-01,200
-3,Grace Hopper,grace@example.com,not-a-date,-15
-4,,missing@,2024-03-10,
-,Alan Kay,alan.kay@example.com,2024-04-01,50

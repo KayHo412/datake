@@ -3,7 +3,10 @@
     "input_dir": "data/input",
     "processed_dir": "data/processed",
     "reports_dir": "data/reports",
-    "log_file": "logs/datake.log"
+    "log_file": "logs/datake.log",
+    "archive_dir": "data/archive",
+    "quarantine_dir": "data/quarantine",
+    "history_db": "data/datake.db"
   },
   "files": {
     "supported_extensions": [".csv"]
@@ -14,6 +17,9 @@
   },
   "logging": {
     "level": "INFO"
+  },
+  "automation": {
+    "watch_interval": 5
   },
   "validation": {
     "required_columns": ["customer_id", "email"],

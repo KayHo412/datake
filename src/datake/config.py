@@ -57,6 +57,10 @@ class Settings:
     processed_dir: Path
     reports_dir: Path
     log_file: Path
+    archive_dir: Path
+    quarantine_dir: Path
+    history_db: Path
+    watch_interval: float
     supported_extensions: tuple[str, ...]
     csv_encodings: tuple[str, ...]
     csv_delimiter: str | None
@@ -122,6 +126,10 @@ def load_settings(config_path: Path | None = None) -> Settings:
         processed_dir=resolve("processed_dir", "data/processed"),
         reports_dir=resolve("reports_dir", "data/reports"),
         log_file=resolve("log_file", "logs/datake.log"),
+        archive_dir=resolve("archive_dir", "data/archive"),
+        quarantine_dir=resolve("quarantine_dir", "data/quarantine"),
+        history_db=resolve("history_db", "data/datake.db"),
+        watch_interval=float(raw.get("automation", {}).get("watch_interval", 5)),
         supported_extensions=tuple(ext.lower() for ext in extensions),
         csv_encodings=tuple(encodings),
         csv_delimiter=str(delimiter) if delimiter else None,

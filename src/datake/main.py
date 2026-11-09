@@ -29,7 +29,13 @@ def configure_logging(settings: Settings) -> None:
 
 def ensure_data_directories(settings: Settings) -> None:
     """Create input, processed, and reports folders if they are missing."""
-    for directory in (settings.input_dir, settings.processed_dir, settings.reports_dir):
+    for directory in (
+        settings.input_dir,
+        settings.processed_dir,
+        settings.reports_dir,
+        settings.archive_dir,
+        settings.quarantine_dir,
+    ):
         directory.mkdir(parents=True, exist_ok=True)
 
 

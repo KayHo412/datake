@@ -30,6 +30,7 @@ class ProcessResult:
     source_path: Path
     status: str
     output_path: Path | None = None
+    rejected_path: Path | None = None
     dataframe: pd.DataFrame | None = None
     clean_result: CleanResult | None = None
     error: str | None = None
@@ -60,11 +61,19 @@ def process_file(
     if write_output:
         output_path = cleaned_output_path(read_result.source_path, settings)
         write_cleaned_csv(cleaned.dataframe, output_path)
+        rejected_path = write_rejected_csv(
+            cleaned.rejected_dataframe,
+            read_result.source_path,
+            settings,
+        )
+    else:
+        rejected_path = None
 
     return ProcessResult(
         source_path=read_result.source_path,
         status="success",
         output_path=output_path,
+        rejected_path=rejected_path,
         dataframe=cleaned.dataframe,
         clean_result=cleaned,
         actions=list(cleaned.actions),
@@ -81,6 +90,21 @@ def write_cleaned_csv(dataframe: pd.DataFrame, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     dataframe.to_csv(output_path, index=False)
     logger.info("Wrote cleaned CSV: %s (%s rows)", output_path, len(dataframe))
+    return output_path
+
+
+def write_rejected_csv(
+    dataframe: pd.DataFrame,
+    source: Path,
+    settings: Settings,
+) -> Path | None:
+    """Write rejected records when cleaning removed any rows."""
+    if dataframe.empty:
+        return None
+    output_path = settings.quarantine_dir / f"{source.stem}_rejected.csv"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    dataframe.to_csv(output_path, index=False)
+    logger.info("Wrote rejected CSV: %s (%s rows)", output_path, len(dataframe))
     return output_path
 
 

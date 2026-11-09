@@ -35,6 +35,10 @@ logs/*.log
 # Local SQLite databases
 *.db
 *.sqlite3
+data/datake.db
+data/archive/*
+data/quarantine/*
+data/reports/*.json
 
 # Editors / OS
 .idea/
