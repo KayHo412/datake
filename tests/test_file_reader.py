@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
+
 from datake.config import load_settings
 from datake.file_reader import list_input_files, read_file
 
@@ -45,6 +47,26 @@ def test_read_valid_csv(tmp_path: Path) -> None:
     assert result.dataframe is not None
     assert list(result.dataframe["name"]) == ["Ada", "Alan"]
     assert csv_path.read_text(encoding="utf-8").startswith("customer_id")
+
+
+def test_read_valid_excel_workbook(tmp_path: Path) -> None:
+    config_path = write_settings(
+        tmp_path,
+        files={"supported_extensions": [".xlsx"]},
+    )
+    settings = load_settings(config_path)
+    excel_path = tmp_path / "customers.xlsx"
+    pd.DataFrame(
+        {"customer_id": [1, 2], "name": ["Ada", "Alan"]}
+    ).to_excel(excel_path, index=False)
+
+    result = read_file(excel_path, settings)
+
+    assert result.succeeded
+    assert result.row_count == 2
+    assert result.column_names == ["customer_id", "name"]
+    assert result.dataframe is not None
+    assert list(result.dataframe["name"]) == ["Ada", "Alan"]
 
 
 def test_missing_file_returns_failure(tmp_path: Path) -> None:

@@ -1,8 +1,4 @@
-"""Read supported tabular files into pandas DataFrames.
-
-Phase 1 supports CSV only. Excel handling is intentionally deferred so
-this module can be verified on its own.
-"""
+"""Read supported tabular files into pandas DataFrames."""
 
 from __future__ import annotations
 
@@ -78,6 +74,8 @@ def read_file(path: Path, settings: Settings) -> ReadResult:
     suffix = source.suffix.lower()
     if suffix == ".csv":
         return _read_csv(source, settings)
+    if suffix == ".xlsx":
+        return _read_excel(source)
 
     return _failure(
         source,
@@ -126,6 +124,32 @@ def _read_csv(source: Path, settings: Settings) -> ReadResult:
     return _failure(
         source,
         last_error or "Unable to decode CSV with the configured encodings.",
+    )
+
+
+def _read_excel(source: Path) -> ReadResult:
+    try:
+        dataframe = pd.read_excel(source, engine="openpyxl")
+    except (ImportError, OSError, ValueError) as exc:
+        message = f"Could not parse Excel workbook: {exc}"
+        logger.error("%s: %s", source.name, message)
+        return _failure(source, message)
+
+    if dataframe.empty and len(dataframe.columns) == 0:
+        return _failure(source, "Excel workbook is empty.")
+
+    logger.info(
+        "Loaded %s (%s rows, %s columns)",
+        source.name,
+        len(dataframe),
+        len(dataframe.columns),
+    )
+    return ReadResult(
+        source_path=source,
+        status="success",
+        dataframe=dataframe,
+        row_count=len(dataframe),
+        column_names=[str(column) for column in dataframe.columns],
     )
 
 

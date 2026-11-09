@@ -2,8 +2,8 @@
 
 Automated data processing tool for CSV and Excel files.
 
-This project is being built in phases. **Phase 4** is in place: read, validate,
-clean, merge, and automatically process incoming CSV files.
+This project is being built in phases. **Phase 5** is in place: read, validate,
+clean, merge, and automatically process incoming CSV and Excel (`.xlsx`) files.
 
 ## Setup
 
@@ -17,6 +17,7 @@ pip install -e ".[dev]"
 
 ```bash
 datake read data/input/sample_customers.csv
+datake read data/input/sample_customers.xlsx
 datake validate data/input/sample_customers_dirty.csv
 datake clean data/input/sample_customers_dirty.csv
 datake merge
@@ -24,7 +25,7 @@ datake watch --once
 datake watch
 ```
 
-- `read` — load a file and show rows (does not change it)
+- `read` — load a CSV or `.xlsx` file and show rows (does not change it)
 - `validate` — list quality problems (does not change it)
 - `clean` — write a cleaned copy to `data/processed/` (original stays in `data/input/`)
 - `merge` — clean files in `data/input/` and combine those with the same columns
@@ -59,6 +60,9 @@ use `datake watch` and stop it with `Ctrl-C`. The optional `--interval` flag
 overrides the configured interval for that run.
 
 Cleaning rules live in `config/settings.json` under `"cleaning"`.
+
+The default supported input extensions are `.csv` and `.xlsx`. Excel files are
+read from their first worksheet and cleaned outputs are written as CSV files.
 
 ## Tests
 

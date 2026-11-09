@@ -33,21 +33,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     read_parser = subparsers.add_parser(
         "read",
-        help="Read a CSV file and print a summary",
+        help="Read a CSV or Excel file and print a summary",
     )
-    read_parser.add_argument("file", type=Path, help="Path to a CSV file")
+    read_parser.add_argument("file", type=Path, help="Path to a CSV or Excel file")
 
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Read a CSV file and print a validation report",
+        help="Read a CSV or Excel file and print a validation report",
     )
-    validate_parser.add_argument("file", type=Path, help="Path to a CSV file")
+    validate_parser.add_argument(
+        "file", type=Path, help="Path to a CSV or Excel file"
+    )
 
     clean_parser = subparsers.add_parser(
         "clean",
-        help="Clean a CSV file and write a copy to data/processed",
+        help="Clean a CSV or Excel file and write a CSV copy to data/processed",
     )
-    clean_parser.add_argument("file", type=Path, help="Path to a CSV file")
+    clean_parser.add_argument("file", type=Path, help="Path to a CSV or Excel file")
 
     merge_parser = subparsers.add_parser(
         "merge",

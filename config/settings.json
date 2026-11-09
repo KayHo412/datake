@@ -9,7 +9,7 @@
     "history_db": "data/datake.db"
   },
   "files": {
-    "supported_extensions": [".csv"]
+    "supported_extensions": [".csv", ".xlsx"]
   },
   "csv": {
     "encodings": ["utf-8", "utf-8-sig", "latin-1"],
