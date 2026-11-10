@@ -19,7 +19,8 @@
     "level": "INFO"
   },
   "automation": {
-    "watch_interval": 5
+    "watch_interval": 5,
+    "file_stability_seconds": 2
   },
   "validation": {
     "required_columns": ["customer_id", "email"],

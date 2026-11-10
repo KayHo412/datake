@@ -42,25 +42,40 @@ def write_report(result: ProcessResult, settings: Settings, digest: str) -> Path
     return report_path
 
 
-def process_new_files(settings: Settings) -> list[ProcessResult]:
+def process_new_files(
+    settings: Settings,
+    *,
+    dry_run: bool = False,
+) -> list[ProcessResult]:
     """Process unhandled input files once and archive successful inputs."""
-    history = ProcessingHistory(settings)
+    history = (
+        ProcessingHistory(settings)
+        if not dry_run or settings.history_db.exists()
+        else None
+    )
     results: list[ProcessResult] = []
     for source in list_input_files(settings):
+        if not _is_stable(source, settings.file_stability_seconds):
+            logger.info("Skipping file that is still changing: %s", source)
+            continue
         digest = file_hash(source)
-        if history.has_success(digest):
+        if history is not None and history.has_success(digest):
             logger.info("Skipping already processed file: %s", source)
             continue
-        result = process_file(source, settings)
-        report_path = write_report(result, settings, digest)
-        history.record(
-            source,
-            digest,
-            result.status,
-            report_path=report_path,
-            error=result.error,
-        )
+        result = process_file(source, settings, write_output=not dry_run)
+        if not dry_run:
+            report_path = write_report(result, settings, digest)
+            assert history is not None
+            history.record(
+                source,
+                digest,
+                result.status,
+                report_path=report_path,
+                error=result.error,
+            )
         results.append(result)
+        if dry_run:
+            continue
         destination_dir = (
             settings.archive_dir if result.succeeded else settings.quarantine_dir
         )
@@ -74,11 +89,12 @@ def watch_input(
     *,
     once: bool = False,
     interval: float | None = None,
+    dry_run: bool = False,
 ) -> None:
     """Poll the input directory until interrupted, or process one batch."""
     delay = interval if interval is not None else settings.watch_interval
     while True:
-        process_new_files(settings)
+        process_new_files(settings, dry_run=dry_run)
         if once:
             return
         time.sleep(delay)
@@ -91,3 +107,14 @@ def _unique_destination(directory: Path, source: Path) -> Path:
         destination = directory / f"{source.stem}_{counter}{source.suffix}"
         counter += 1
     return destination
+
+
+def _is_stable(source: Path, seconds: float) -> bool:
+    if seconds == 0:
+        return True
+    first = source.stat()
+    time.sleep(seconds)
+    if not source.exists():
+        return False
+    second = source.stat()
+    return first.st_size == second.st_size and first.st_mtime_ns == second.st_mtime_ns

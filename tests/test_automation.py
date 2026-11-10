@@ -5,6 +5,7 @@ from pathlib import Path
 
 from datake.automation import process_new_files
 from datake.config import load_settings
+from datake.history import ProcessingHistory
 
 
 def write_settings(tmp_path: Path) -> Path:
@@ -58,3 +59,26 @@ def test_process_new_files_archives_and_skips_same_content(tmp_path: Path) -> No
     report = settings.reports_dir / "customers_report.json"
     assert json.loads(report.read_text(encoding="utf-8"))["rejected_rows"] == 1
     assert process_new_files(settings) == []
+
+    summary = ProcessingHistory(settings).summary()
+    assert summary.total == 1
+    assert summary.successful == 1
+    assert summary.failed == 0
+    assert summary.recent_runs[0].source_path == source.resolve()
+
+
+def test_dry_run_does_not_change_input_or_history(tmp_path: Path) -> None:
+    settings = load_settings(write_settings(tmp_path))
+    source = settings.input_dir / "preview.csv"
+    source.write_text(
+        "customer_id,email\n1,ada@example.com\n",
+        encoding="utf-8",
+    )
+
+    results = process_new_files(settings, dry_run=True)
+
+    assert len(results) == 1
+    assert results[0].succeeded
+    assert source.exists()
+    assert not settings.history_db.exists()
+    assert not list(settings.processed_dir.glob("*"))

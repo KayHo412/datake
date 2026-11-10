@@ -61,6 +61,7 @@ class Settings:
     quarantine_dir: Path
     history_db: Path
     watch_interval: float
+    file_stability_seconds: float
     supported_extensions: tuple[str, ...]
     csv_encodings: tuple[str, ...]
     csv_delimiter: str | None
@@ -120,6 +121,16 @@ def load_settings(config_path: Path | None = None) -> Settings:
         for column, bounds in constraints_raw.items()
     }
 
+    automation_raw = raw.get("automation", {})
+    watch_interval = float(automation_raw.get("watch_interval", 5))
+    file_stability_seconds = float(automation_raw.get("file_stability_seconds", 0))
+    if watch_interval <= 0:
+        raise ConfigError("automation.watch_interval must be greater than zero")
+    if file_stability_seconds < 0:
+        raise ConfigError("automation.file_stability_seconds cannot be negative")
+    if not extensions:
+        raise ConfigError("files.supported_extensions must not be empty")
+
     return Settings(
         project_root=project_root,
         input_dir=resolve("input_dir", "data/input"),
@@ -129,7 +140,8 @@ def load_settings(config_path: Path | None = None) -> Settings:
         archive_dir=resolve("archive_dir", "data/archive"),
         quarantine_dir=resolve("quarantine_dir", "data/quarantine"),
         history_db=resolve("history_db", "data/datake.db"),
-        watch_interval=float(raw.get("automation", {}).get("watch_interval", 5)),
+        watch_interval=watch_interval,
+        file_stability_seconds=file_stability_seconds,
         supported_extensions=tuple(ext.lower() for ext in extensions),
         csv_encodings=tuple(encodings),
         csv_delimiter=str(delimiter) if delimiter else None,

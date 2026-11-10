@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from datake.automation import watch_input
+from datake.history import HistorySummary, ProcessingHistory, ProcessingRun
 from datake.main import (
     clean_tabular_file,
     load_runtime,
@@ -76,6 +78,47 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Polling interval in seconds (default: configured value)",
     )
+    watch_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview processing without writing, recording, or moving files",
+    )
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Show automated processing history",
+    )
+    status_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Maximum recent runs to show (default: 10)",
+    )
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print status as JSON",
+    )
+    report_parser = subparsers.add_parser(
+        "report",
+        help="List recorded processing reports",
+    )
+    report_parser.add_argument(
+        "--status",
+        choices=("success", "failed"),
+        default=None,
+        help="Filter reports by outcome",
+    )
+    report_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum reports to show (default: 20)",
+    )
+    report_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print reports as JSON",
+    )
     return parser
 
 
@@ -117,6 +160,53 @@ def _print_process(result: ProcessResult) -> None:
     if not result.dataframe.empty:
         print()
         print(result.dataframe.to_string(index=False))
+
+
+def _print_status(summary: HistorySummary) -> None:
+    """Print a history summary."""
+    print(f"Total runs: {summary.total}")
+    print(f"Successful: {summary.successful}")
+    print(f"Failed: {summary.failed}")
+    if not summary.recent_runs:
+        print("No processing runs recorded.")
+        return
+    print()
+    print("Recent runs:")
+    for run in summary.recent_runs:
+        completed = run.completed_at or "in progress"
+        print(f"- {run.status.upper()} {run.source_path} ({completed})")
+        if run.error:
+            print(f"  error: {run.error}")
+
+
+def _status_payload(summary: HistorySummary) -> dict[str, object]:
+    return {
+        "total": summary.total,
+        "successful": summary.successful,
+        "failed": summary.failed,
+        "recent_runs": [
+            {
+                "source_path": str(run.source_path),
+                "file_hash": run.file_hash,
+                "status": run.status,
+                "completed_at": run.completed_at,
+                "report_path": str(run.report_path) if run.report_path else None,
+                "error": run.error,
+            }
+            for run in summary.recent_runs
+        ],
+    }
+
+
+def _run_payload(run: ProcessingRun) -> dict[str, object]:
+    return {
+        "source_path": str(run.source_path),
+        "file_hash": run.file_hash,
+        "status": run.status,
+        "completed_at": run.completed_at,
+        "report_path": str(run.report_path) if run.report_path else None,
+        "error": run.error,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -173,9 +263,48 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "watch":
         settings = load_runtime(args.config)
         try:
-            watch_input(settings, once=args.once, interval=args.interval)
+            watch_input(
+                settings,
+                once=args.once,
+                interval=args.interval,
+                dry_run=args.dry_run,
+            )
         except KeyboardInterrupt:
             print("Watch stopped.")
+        return 0
+
+    if args.command == "status":
+        if args.limit < 0:
+            parser.error("--limit must be non-negative")
+        settings = load_runtime(args.config)
+        summary = ProcessingHistory(settings).summary(limit=args.limit)
+        if args.json:
+            print(json.dumps(_status_payload(summary), indent=2))
+        else:
+            _print_status(summary)
+        return 0
+
+    if args.command == "report":
+        if args.limit < 0:
+            parser.error("--limit must be non-negative")
+        settings = load_runtime(args.config)
+        runs = ProcessingHistory(settings).runs(
+            status=args.status,
+            limit=args.limit,
+        )
+        if args.json:
+            print(json.dumps([_run_payload(run) for run in runs], indent=2))
+        else:
+            if not runs:
+                print("No matching reports.")
+            for run in runs:
+                print(f"{run.status.upper()} {run.source_path}")
+                print(f"  hash: {run.file_hash}")
+                print(f"  completed: {run.completed_at or 'in progress'}")
+                if run.report_path:
+                    print(f"  report: {run.report_path}")
+                if run.error:
+                    print(f"  error: {run.error}")
         return 0
 
     parser.error(f"Unknown command: {args.command}")

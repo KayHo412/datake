@@ -4,10 +4,33 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from datake.config import Settings
+
+
+@dataclass(frozen=True)
+class ProcessingRun:
+    """A recorded automated processing attempt."""
+
+    source_path: Path
+    file_hash: str
+    status: str
+    completed_at: str | None
+    report_path: Path | None
+    error: str | None
+
+
+@dataclass(frozen=True)
+class HistorySummary:
+    """Counts and recent runs recorded by the automation history."""
+
+    total: int
+    successful: int
+    failed: int
+    recent_runs: tuple[ProcessingRun, ...]
 
 
 def file_hash(path: Path) -> str:
@@ -49,6 +72,81 @@ class ProcessingHistory:
                 (digest,),
             ).fetchone()
         return row is not None
+
+    def summary(self, *, limit: int = 10) -> HistorySummary:
+        """Return aggregate counts and the most recent processing runs."""
+        if limit < 0:
+            raise ValueError("limit must be non-negative")
+        with self._connect() as connection:
+            counts = connection.execute(
+                """
+                SELECT COUNT(*),
+                       COALESCE(SUM(status = 'success'), 0),
+                       COALESCE(SUM(status != 'success'), 0)
+                FROM processing_runs
+                """
+            ).fetchone()
+            rows = connection.execute(
+                """
+                SELECT source_path, file_hash, status, completed_at,
+                       report_path, error
+                FROM processing_runs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        recent_runs = tuple(
+            ProcessingRun(
+                source_path=Path(row[0]),
+                file_hash=row[1],
+                status=row[2],
+                completed_at=row[3],
+                report_path=Path(row[4]) if row[4] else None,
+                error=row[5],
+            )
+            for row in rows
+        )
+        return HistorySummary(
+            total=int(counts[0]),
+            successful=int(counts[1]),
+            failed=int(counts[2]),
+            recent_runs=recent_runs,
+        )
+
+    def runs(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> tuple[ProcessingRun, ...]:
+        """Return recent runs, optionally filtered by outcome."""
+        if limit < 0:
+            raise ValueError("limit must be non-negative")
+        query = """
+            SELECT source_path, file_hash, status, completed_at, report_path, error
+            FROM processing_runs
+        """
+        parameters: tuple[object, ...] = ()
+        if status is not None:
+            query += " WHERE status = ?"
+            parameters = (status,)
+        query += " ORDER BY id DESC LIMIT ?"
+        parameters += (limit,)
+        with self._connect() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        return tuple(
+            ProcessingRun(
+                source_path=Path(row[0]),
+                file_hash=row[1],
+                status=row[2],
+                completed_at=row[3],
+                report_path=Path(row[4]) if row[4] else None,
+                error=row[5],
+            )
+            for row in rows
+        )
 
     def record(
         self,
