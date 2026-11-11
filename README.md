@@ -291,3 +291,29 @@ Privacy features could include:
 AI-assisted explanations may eventually summarize unusual patterns or suggest
 rules, but production cleaning decisions should remain controlled by explicit,
 repeatable rules.
+
+### Phase 17 — Job search and application checklist
+
+Datake may later support a personal job-search workflow using approved job
+APIs, feeds, or websites that permit automated collection. It should not bypass
+logins, CAPTCHA systems, paywalls, or other security controls.
+
+The planned workflow is:
+
+```text
+approved job sources -> find matching jobs -> remove duplicates
+-> track applications -> export an Excel checklist
+```
+
+Possible features include:
+
+- Search by job title, location, remote status, salary, skills, and posting date.
+- Remove duplicate job listings and remember jobs already reviewed.
+- Score or group jobs against user preferences.
+- Track application status, deadlines, follow-ups, interviews, and notes.
+- Export sheets for job matches, application tasks, applications, and a summary.
+- Add reminders without automatically submitting applications.
+
+The user should review and submit applications themselves. A future backend
+could expose job-search and application endpoints, but this is not implemented
+yet.
