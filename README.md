@@ -20,6 +20,8 @@ pip install -e ".[dev]"
 datake read data/input/sample_customers.csv
 datake read data/input/sample_customers.xlsx
 datake validate data/input/sample_customers_dirty.csv
+datake profile data/input/sample_customers_dirty.csv
+datake profile data/input/sample_customers_dirty.csv --json
 datake clean data/input/sample_customers_dirty.csv
 datake merge
 datake watch --once
@@ -33,6 +35,8 @@ datake watch --once --dry-run
 
 - `read` — load a CSV or `.xlsx` file and show rows (does not change it)
 - `validate` — list quality problems (does not change it)
+- `profile` — summarize columns, missing values, duplicates, and common values
+  without changing the file
 - `clean` — write a cleaned copy to `data/processed/` (original stays in `data/input/`)
 - `merge` — clean files in `data/input/` and combine those with the same columns
 - `watch --once` — process the current input batch and exit
@@ -87,3 +91,203 @@ watcher waits until size and modification time stop changing before reading.
 ```bash
 pytest
 ```
+
+## Try the backend MVP
+
+Install the API dependencies:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Start the local server from the project directory:
+
+```bash
+uvicorn datake.api:app --reload
+```
+
+Open the interactive API page at
+[`http://127.0.0.1:8000/docs`](http://127.0.0.1:8000/docs). The MVP supports:
+
+- `GET /health` — check that the server is running.
+- `POST /files` — upload a CSV or `.xlsx` file.
+- `POST /files/{file_id}/process` — clean the uploaded file.
+- `GET /jobs/{job_id}` — see processing results.
+- `GET /jobs/{job_id}/report` — read the JSON report.
+- `GET /files/{file_id}/download` — download the cleaned CSV.
+
+The API currently stores uploads and outputs locally and keeps job records in
+memory. Restarting the server clears the in-memory job list. This is
+intentional for the MVP; a later backend phase will add persistent storage,
+authentication, and background processing.
+
+## Backend MVP
+
+Datake now includes a small FastAPI backend for trying the processing workflow
+from another application:
+
+```bash
+uvicorn datake.api:app --reload
+```
+
+Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) to use the
+interactive API page. The available endpoints are:
+
+- `GET /health`
+- `POST /files`
+- `POST /files/{file_id}/process`
+- `GET /jobs/{job_id}`
+- `GET /jobs/{job_id}/report`
+- `GET /files/{file_id}/download`
+
+The MVP accepts CSV and `.xlsx` uploads, processes them immediately, stores
+files locally, and returns a cleaned CSV and JSON report. Job records are held
+in memory and are cleared when the server restarts.
+
+## Future roadmap
+
+Datake currently has a command-line tool and a small backend MVP that read,
+check, clean, and report on CSV and Excel data. The following capabilities are
+planned future development; they are not part of the current implementation.
+
+### Phase 9 — Understand data before changing it
+
+- The `profile` command now summarizes columns, missing values, duplicates,
+  common values, numeric ranges, and a simple data-quality score.
+- Add unusual-value detection and data comparison in a later increment.
+- Add data comparison so users can see what was added, removed, or changed
+  between two datasets.
+
+The intended workflow is:
+
+```text
+profile -> validate -> dry-run -> clean -> compare -> publish
+```
+
+### Phase 10 — Support more formats
+
+Add JSON, JSON Lines, and Parquet as input and output formats. CSV and Excel
+will remain supported, but they will be only two of several ways to exchange
+data.
+
+### Phase 11 — Reusable data rules
+
+Add named schemas and cleaning profiles. A schema could say that a customer ID
+is required and unique, an email must be valid, and an amount cannot be
+negative. The same rules should work regardless of whether the data came from
+a file, website, API, or database.
+
+Add reusable transformations such as:
+
+- Renaming and standardizing fields.
+- Converting dates and numbers.
+- Mapping categories.
+- Filtering and deduplicating records.
+- Joining or summarizing datasets.
+
+### Phase 12 — Collect data from other places
+
+Add connectors for approved sources such as:
+
+- PostgreSQL and other databases.
+- REST APIs.
+- Google Sheets.
+- SFTP and cloud storage.
+- Webhooks.
+- Websites where automated collection is permitted.
+
+Website collection should create a table internally and send it through the
+same validation, cleaning, reporting, and history system. A user would not
+need to upload a CSV for this workflow.
+
+The future website workflow is:
+
+```text
+approved website -> collect information -> validate -> clean -> report
+```
+
+Datake must respect website terms, robots rules, request limits, and privacy.
+It must not bypass passwords, CAPTCHA systems, paywalls, or other security
+controls.
+
+### Phase 13 — Deliver data to useful destinations
+
+Add outputs such as:
+
+- Cleaned files in CSV, Excel, JSON, or Parquet.
+- Database tables.
+- Cloud storage.
+- Another approved API.
+- Scheduled business reports.
+
+This will allow workflows such as:
+
+```text
+online shop -> Datake -> clean data -> company database
+```
+
+### Phase 14 — Run repeatable jobs automatically
+
+Add saved jobs that can run on a schedule or when new information arrives.
+A job could collect data, clean it, compare it with the previous run, save the
+result, and send an alert when something changes.
+
+Planned job features include:
+
+- Scheduling.
+- Retries and failure handling.
+- Dry runs.
+- Manual reruns and cancellation.
+- Job history.
+- Email, Slack, Teams, or webhook alerts.
+
+### Phase 15 — Backend API hardening
+
+Expose Datake through a web backend so a website or another application can
+use it. The first general job workflow is planned to support:
+
+```text
+POST /files
+POST /jobs
+GET  /jobs/{job_id}
+GET  /jobs/{job_id}/result
+GET  /jobs/{job_id}/report
+```
+
+The `POST /jobs` request should identify the source:
+
+```json
+{
+  "source": {
+    "type": "website",
+    "url": "https://approved.example/products"
+  },
+  "action": "collect_and_clean"
+}
+```
+
+The same job system should later support uploaded files, APIs, and databases.
+Large jobs should run in the background so a web request does not need to wait
+for processing to finish.
+
+### Phase 16 — Reports, dashboards, and privacy
+
+Future reports and dashboards could show:
+
+- Sales or other business summaries.
+- Processing history.
+- Quality scores over time.
+- Rejected-row trends.
+- Changes between runs.
+- Failed jobs and warnings.
+
+Privacy features could include:
+
+- Detecting personal information.
+- Hiding or hashing names, emails, phone numbers, and addresses.
+- Creating safe test data.
+- Access control and audit history.
+
+AI-assisted explanations may eventually summarize unusual patterns or suggest
+rules, but production cleaning decisions should remain controlled by explicit,
+repeatable rules.

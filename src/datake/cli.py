@@ -13,10 +13,12 @@ from datake.main import (
     clean_tabular_file,
     load_runtime,
     merge_tabular_files,
+    profile_tabular_file,
     read_tabular_file,
     validate_tabular_file,
 )
 from datake.processor import ProcessResult
+from datake.profiler import ProfileSummary
 from datake.validator import ValidationSummary
 
 
@@ -45,6 +47,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.add_argument(
         "file", type=Path, help="Path to a CSV or Excel file"
+    )
+
+    profile_parser = subparsers.add_parser(
+        "profile",
+        help="Summarize a CSV or Excel file without changing it",
+    )
+    profile_parser.add_argument(
+        "file", type=Path, help="Path to a CSV or Excel file"
+    )
+    profile_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the profile as JSON",
     )
 
     clean_parser = subparsers.add_parser(
@@ -209,6 +224,30 @@ def _run_payload(run: ProcessingRun) -> dict[str, object]:
     }
 
 
+def _print_profile(path: Path, profile: ProfileSummary) -> None:
+    print(f"File: {path}")
+    print(f"Rows: {profile.row_count}")
+    print(f"Columns: {profile.column_count}")
+    print(f"Duplicate rows: {profile.duplicate_rows}")
+    print(f"Quality score: {profile.quality_score}/100")
+    print()
+    for column in profile.columns:
+        print(f"- {column.name}")
+        print(f"  type: {column.data_type}")
+        print(
+            f"  missing: {column.missing_count} "
+            f"({column.missing_percent:.2f}%)"
+        )
+        print(f"  unique values: {column.unique_count}")
+        if column.minimum is not None:
+            print(f"  range: {column.minimum} to {column.maximum}")
+        if column.top_values:
+            values = ", ".join(
+                f"{item['value']} ({item['count']})" for item in column.top_values
+            )
+            print(f"  common values: {values}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -234,6 +273,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         _print_validation(summary)
         return 0 if summary.passed else 1
+
+    if args.command == "profile":
+        result, profile = profile_tabular_file(args.file, config_path=args.config)
+        if not result.succeeded or profile is None:
+            print(f"FAILED: {result.error}", file=sys.stderr)
+            return 1
+        if args.json:
+            payload = {"source_path": str(result.source_path), **profile.to_dict()}
+            print(json.dumps(payload, indent=2))
+        else:
+            _print_profile(result.source_path, profile)
+        return 0
 
     if args.command == "clean":
         result = clean_tabular_file(args.file, config_path=args.config)

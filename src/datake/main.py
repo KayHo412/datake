@@ -8,6 +8,7 @@ from pathlib import Path
 from datake.config import Settings, load_settings
 from datake.file_reader import ReadResult, list_input_files, read_file
 from datake.processor import ProcessResult, process_and_merge, process_file
+from datake.profiler import ProfileSummary, profile_dataframe
 from datake.validator import ValidationSummary, validate_dataframe
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,18 @@ def validate_tabular_file(
         source_path=read_result.source_path,
     )
     return read_result, summary
+
+
+def profile_tabular_file(
+    path: Path,
+    config_path: Path | None = None,
+) -> tuple[ReadResult, ProfileSummary | None]:
+    """Read a file and, if successful, produce a read-only profile."""
+    settings = load_runtime(config_path)
+    read_result = read_file(path, settings)
+    if not read_result.succeeded or read_result.dataframe is None:
+        return read_result, None
+    return read_result, profile_dataframe(read_result.dataframe)
 
 
 def clean_tabular_file(

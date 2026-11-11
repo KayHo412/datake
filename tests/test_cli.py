@@ -82,3 +82,27 @@ def test_report_json_output_can_filter_failures(tmp_path: Path, capsys) -> None:
     assert len(payload) == 1
     assert payload[0]["status"] == "failed"
     assert payload[0]["error"] == "invalid CSV"
+
+
+def test_profile_json_output(tmp_path: Path, capsys) -> None:
+    config_path = write_settings(tmp_path)
+    source = tmp_path / "customers.csv"
+    source.write_text(
+        "customer_id,email\n1,a@example.com\n2,\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--config",
+            str(config_path),
+            "profile",
+            str(source),
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["row_count"] == 2
+    assert payload["columns"][1]["missing_count"] == 1
