@@ -2,9 +2,9 @@
 
 Automated data processing tool for CSV and Excel files.
 
-This project is being built in phases. **Phase 8** is in place: read, validate,
-clean, merge, monitor, and inspect processing history for CSV and Excel
-(`.xlsx`) files.
+This project is being built in phases. **Phase 9** is in place: read, validate,
+profile, compare, clean, merge, monitor, and inspect processing history for CSV
+and Excel (`.xlsx`) files.
 
 ## Setup
 
@@ -22,6 +22,8 @@ datake read data/input/sample_customers.xlsx
 datake validate data/input/sample_customers_dirty.csv
 datake profile data/input/sample_customers_dirty.csv
 datake profile data/input/sample_customers_dirty.csv --json
+datake compare data/input/old.csv data/input/new.csv --key customer_id
+datake compare data/input/old.csv data/input/new.csv --key customer_id --json
 datake clean data/input/sample_customers_dirty.csv
 datake merge
 datake watch --once
@@ -36,7 +38,10 @@ datake watch --once --dry-run
 - `read` — load a CSV or `.xlsx` file and show rows (does not change it)
 - `validate` — list quality problems (does not change it)
 - `profile` — summarize columns, missing values, duplicates, and common values
-  without changing the file
+  without changing the file; numeric IQR outliers and singleton values are
+  reported as unusual values
+- `compare` — report rows added, removed, and changed between two datasets;
+  use repeated `--key` options to match records by one or more columns
 - `clean` — write a cleaned copy to `data/processed/` (original stays in `data/input/`)
 - `merge` — clean files in `data/input/` and combine those with the same columns
 - `watch --once` — process the current input batch and exit
@@ -147,16 +152,18 @@ in memory and are cleared when the server restarts.
 ## Future roadmap
 
 Datake currently has a command-line tool and a small backend MVP that read,
-check, clean, and report on CSV and Excel data. The following capabilities are
-planned future development; they are not part of the current implementation.
+check, profile, compare, clean, and report on CSV and Excel data. The remaining
+capabilities below are planned future development and are not part of the
+current implementation.
 
-### Phase 9 — Understand data before changing it
+### Phase 9 — Understand data before changing it (complete)
 
 - The `profile` command now summarizes columns, missing values, duplicates,
   common values, numeric ranges, and a simple data-quality score.
-- Add unusual-value detection and data comparison in a later increment.
-- Add data comparison so users can see what was added, removed, or changed
-  between two datasets.
+- `profile` reports numeric IQR outliers and singleton categorical values as
+  unusual values.
+- `compare` reports added, removed, and changed rows. With `--key`, rows are
+  matched by stable identifiers; without it, complete row values are compared.
 
 The intended workflow is:
 
@@ -164,7 +171,7 @@ The intended workflow is:
 profile -> validate -> dry-run -> clean -> compare -> publish
 ```
 
-### Phase 10 — Support more formats
+### Phase 10 — Support more formats (next)
 
 Add JSON, JSON Lines, and Parquet as input and output formats. CSV and Excel
 will remain supported, but they will be only two of several ways to exchange

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from datake.comparator import ComparisonSummary, compare_dataframes
 from datake.config import Settings, load_settings
 from datake.file_reader import ReadResult, list_input_files, read_file
 from datake.processor import ProcessResult, process_and_merge, process_file
@@ -84,6 +85,31 @@ def profile_tabular_file(
     if not read_result.succeeded or read_result.dataframe is None:
         return read_result, None
     return read_result, profile_dataframe(read_result.dataframe)
+
+
+def compare_tabular_files(
+    before_path: Path,
+    after_path: Path,
+    key_columns: list[str] | None = None,
+    config_path: Path | None = None,
+) -> tuple[ReadResult, ReadResult, ComparisonSummary | None]:
+    """Read and compare two files without changing either source."""
+    settings = load_runtime(config_path)
+    before = read_file(before_path, settings)
+    after = read_file(after_path, settings)
+    if (
+        not before.succeeded
+        or before.dataframe is None
+        or not after.succeeded
+        or after.dataframe is None
+    ):
+        return before, after, None
+    try:
+        summary = compare_dataframes(before.dataframe, after.dataframe, key_columns)
+    except ValueError:
+        logger.exception("Could not compare %s and %s", before_path, after_path)
+        raise
+    return before, after, summary
 
 
 def clean_tabular_file(

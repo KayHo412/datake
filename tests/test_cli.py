@@ -106,3 +106,30 @@ def test_profile_json_output(tmp_path: Path, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["row_count"] == 2
     assert payload["columns"][1]["missing_count"] == 1
+
+
+def test_compare_json_output_with_key(tmp_path: Path, capsys) -> None:
+    config_path = write_settings(tmp_path)
+    before = tmp_path / "before.csv"
+    after = tmp_path / "after.csv"
+    before.write_text("id,name\n1,Ada\n2,Alan\n", encoding="utf-8")
+    after.write_text("id,name\n2,Alex\n3,Bea\n", encoding="utf-8")
+
+    exit_code = main(
+        [
+            "--config",
+            str(config_path),
+            "compare",
+            str(before),
+            str(after),
+            "--key",
+            "id",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["added_count"] == 1
+    assert payload["removed_count"] == 1
+    assert payload["changed_count"] == 1

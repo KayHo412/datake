@@ -27,3 +27,20 @@ def test_profile_dataframe_summarizes_quality_and_columns() -> None:
     assert amount.minimum == 10
     assert amount.maximum == 20
     assert amount.top_values[0] == {"value": 20, "count": 2}
+
+
+def test_profile_dataframe_detects_numeric_outliers_and_rare_values() -> None:
+    summary = profile_dataframe(
+        pd.DataFrame(
+            {
+                "amount": [10, 11, 12, 13, 1000],
+                "category": ["a", "a", "a", "b", "rare"],
+            }
+        )
+    )
+
+    amount = next(column for column in summary.columns if column.name == "amount")
+    assert amount.unusual_count == 1
+    assert amount.unusual_values == (1000,)
+    category = next(column for column in summary.columns if column.name == "category")
+    assert category.unusual_values == ("b", "rare")

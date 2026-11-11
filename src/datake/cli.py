@@ -11,6 +11,7 @@ from datake.automation import watch_input
 from datake.history import HistorySummary, ProcessingHistory, ProcessingRun
 from datake.main import (
     clean_tabular_file,
+    compare_tabular_files,
     load_runtime,
     merge_tabular_files,
     profile_tabular_file,
@@ -67,6 +68,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Clean a CSV or Excel file and write a CSV copy to data/processed",
     )
     clean_parser.add_argument("file", type=Path, help="Path to a CSV or Excel file")
+
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="Compare two CSV or Excel files without changing them",
+    )
+    compare_parser.add_argument("before", type=Path, help="Earlier dataset")
+    compare_parser.add_argument("after", type=Path, help="Later dataset")
+    compare_parser.add_argument(
+        "--key",
+        action="append",
+        dest="keys",
+        default=[],
+        help="Column used to match rows; repeat for a compound key",
+    )
+    compare_parser.add_argument("--json", action="store_true", help="Print as JSON")
 
     merge_parser = subparsers.add_parser(
         "merge",
@@ -246,6 +262,9 @@ def _print_profile(path: Path, profile: ProfileSummary) -> None:
                 f"{item['value']} ({item['count']})" for item in column.top_values
             )
             print(f"  common values: {values}")
+        if column.unusual_count:
+            values = ", ".join(str(value) for value in column.unusual_values)
+            print(f"  unusual values: {column.unusual_count} ({values})")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -290,6 +309,32 @@ def main(argv: list[str] | None = None) -> int:
         result = clean_tabular_file(args.file, config_path=args.config)
         _print_process(result)
         return 0 if result.succeeded else 1
+
+    if args.command == "compare":
+        try:
+            before, after, summary = compare_tabular_files(
+                args.before,
+                args.after,
+                key_columns=args.keys or None,
+                config_path=args.config,
+            )
+        except ValueError as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
+        if not before.succeeded:
+            print(f"FAILED: {before.error}", file=sys.stderr)
+            return 1
+        if not after.succeeded:
+            print(f"FAILED: {after.error}", file=sys.stderr)
+            return 1
+        assert summary is not None
+        if args.json:
+            print(json.dumps(summary.to_dict(), indent=2))
+        else:
+            print(f"Added rows: {summary.added_count}")
+            print(f"Removed rows: {summary.removed_count}")
+            print(f"Changed rows: {summary.changed_count}")
+        return 0
 
     if args.command == "merge":
         results, merged_path = merge_tabular_files(
