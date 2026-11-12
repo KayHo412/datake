@@ -126,3 +126,38 @@ def test_process_and_merge_writes_merged_csv(tmp_path: Path) -> None:
     assert len(merged) == 2
     assert merged_path.is_file()
     assert first.read_text(encoding="utf-8").startswith("customer_id,Customer Name")
+
+
+@pytest.mark.parametrize(
+    ("output_format", "expected_suffix"),
+    [("json", ".json"), ("jsonl", ".jsonl"), ("parquet", ".parquet")],
+)
+def test_process_file_writes_configured_output_format(
+    tmp_path: Path,
+    output_format: str,
+    expected_suffix: str,
+) -> None:
+    config_path = write_settings(tmp_path)
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    raw["files"]["output_format"] = output_format
+    config_path.write_text(json.dumps(raw), encoding="utf-8")
+    settings = load_settings(config_path)
+    source = settings.input_dir / "customers.csv"
+    source.write_text("customer_id,email\n1,ada@example.com\n", encoding="utf-8")
+
+    result = process_file(source, settings)
+
+    assert result.succeeded
+    assert result.output_path is not None
+    assert result.output_path.suffix == expected_suffix
+    assert result.output_path.is_file()
+    if output_format == "parquet":
+        round_trip = pd.read_parquet(result.output_path)
+    else:
+        round_trip = pd.read_json(
+            result.output_path,
+            lines=output_format == "jsonl",
+        )
+    assert round_trip.to_dict("records") == [
+        {"customer_id": 1, "email": "ada@example.com"}
+    ]

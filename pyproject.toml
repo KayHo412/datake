@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.115",
     "openpyxl>=3.1",
     "pandas>=2.2",
+    "pyarrow>=15.0",
     "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.30",
 ]

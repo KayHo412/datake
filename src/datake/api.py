@@ -127,8 +127,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Processed file not found")
         return FileResponse(
             job.result.output_path,
-            media_type="text/csv",
-            filename=f"{Path(job.filename).stem}_cleaned.csv",
+            media_type=_media_type(job.result.output_path),
+            filename=job.result.output_path.name,
         )
 
     return app
@@ -150,6 +150,15 @@ def _job_payload(job: ApiJob) -> dict[str, object]:
         "report_available": job.report_path is not None,
         "error": job.error,
     }
+
+
+def _media_type(path: Path) -> str:
+    return {
+        ".csv": "text/csv",
+        ".json": "application/json",
+        ".jsonl": "application/x-ndjson",
+        ".parquet": "application/vnd.apache.parquet",
+    }.get(path.suffix.lower(), "application/octet-stream")
 
 
 app = create_app()

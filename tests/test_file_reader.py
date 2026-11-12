@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from datake.config import load_settings
 from datake.file_reader import list_input_files, read_file
@@ -67,6 +68,45 @@ def test_read_valid_excel_workbook(tmp_path: Path) -> None:
     assert result.column_names == ["customer_id", "name"]
     assert result.dataframe is not None
     assert list(result.dataframe["name"]) == ["Ada", "Alan"]
+
+
+@pytest.mark.parametrize(
+    ("extension", "content"),
+    [
+        (".json", '[{"id": 1, "name": "Ada"}]'),
+        (".jsonl", '{"id": 1, "name": "Ada"}\n'),
+    ],
+)
+def test_read_json_formats(tmp_path: Path, extension: str, content: str) -> None:
+    config_path = write_settings(
+        tmp_path,
+        files={"supported_extensions": [extension]},
+    )
+    settings = load_settings(config_path)
+    source = tmp_path / f"customers{extension}"
+    source.write_text(content, encoding="utf-8")
+
+    result = read_file(source, settings)
+
+    assert result.succeeded
+    assert result.dataframe is not None
+    assert result.dataframe.to_dict("records") == [{"id": 1, "name": "Ada"}]
+
+
+def test_read_parquet(tmp_path: Path) -> None:
+    config_path = write_settings(
+        tmp_path,
+        files={"supported_extensions": [".parquet"]},
+    )
+    settings = load_settings(config_path)
+    source = tmp_path / "customers.parquet"
+    pd.DataFrame({"id": [1], "name": ["Ada"]}).to_parquet(source, index=False)
+
+    result = read_file(source, settings)
+
+    assert result.succeeded
+    assert result.dataframe is not None
+    assert result.dataframe.to_dict("records") == [{"id": 1, "name": "Ada"}]
 
 
 def test_missing_file_returns_failure(tmp_path: Path) -> None:

@@ -2,9 +2,9 @@
 
 Automated data processing tool for CSV and Excel files.
 
-This project is being built in phases. **Phase 9** is in place: read, validate,
-profile, compare, clean, merge, monitor, and inspect processing history for CSV
-and Excel (`.xlsx`) files.
+This project is being built in phases. **Phase 10** is in place: read, validate,
+profile, compare, clean, merge, monitor, and inspect processing history for CSV,
+Excel (`.xlsx`), JSON, JSON Lines, and Parquet files.
 
 ## Setup
 
@@ -86,8 +86,22 @@ Cleaning rules live in `config/settings.json` under `"cleaning"`.
 Use `datake status --limit 20` to inspect more recent runs. The command reports
 successful and failed runs from the SQLite history without modifying data.
 
-The default supported input extensions are `.csv` and `.xlsx`. Excel files are
-read from their first worksheet and cleaned outputs are written as CSV files.
+The default supported input extensions are `.csv`, `.xlsx`, `.json`, `.jsonl`,
+and `.parquet`. Excel files are read from their first worksheet. JSON files use
+an array of objects, JSON Lines uses one object per line, and Parquet files use
+their first table. Cleaned outputs use the `files.output_format` setting and
+default to CSV:
+
+```json
+{
+  "files": {
+    "supported_extensions": [".csv", ".xlsx", ".json", ".jsonl", ".parquet"],
+    "output_format": "parquet"
+  }
+}
+```
+
+Parquet support uses the `pyarrow` dependency installed by the project.
 For large files copied into `data/input`, set `file_stability_seconds` so the
 watcher waits until size and modification time stop changing before reading.
 
@@ -171,13 +185,13 @@ The intended workflow is:
 profile -> validate -> dry-run -> clean -> compare -> publish
 ```
 
-### Phase 10 — Support more formats (next)
+### Phase 10 — Support more formats (complete)
 
-Add JSON, JSON Lines, and Parquet as input and output formats. CSV and Excel
-will remain supported, but they will be only two of several ways to exchange
-data.
+- JSON, JSON Lines, and Parquet are supported as inputs and outputs.
+- CSV remains the default output format for compatibility.
+- `files.output_format` selects `csv`, `json`, `jsonl`, or `parquet`.
 
-### Phase 11 — Reusable data rules
+### Phase 11 — Reusable data rules (next)
 
 Add named schemas and cleaning profiles. A schema could say that a customer ID
 is required and unique, an email must be valid, and an amount cannot be

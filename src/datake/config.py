@@ -63,6 +63,7 @@ class Settings:
     watch_interval: float
     file_stability_seconds: float
     supported_extensions: tuple[str, ...]
+    output_format: str
     csv_encodings: tuple[str, ...]
     csv_delimiter: str | None
     log_level: str
@@ -114,6 +115,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
     delimiter = csv_options.get("delimiter")
     encodings = csv_options.get("encodings") or ["utf-8"]
     extensions = files.get("supported_extensions") or [".csv"]
+    output_format = str(files.get("output_format", "csv")).lower().lstrip(".")
     validation_raw = raw.get("validation", {})
     constraints_raw = validation_raw.get("numeric_constraints") or {}
     numeric_constraints = {
@@ -130,6 +132,10 @@ def load_settings(config_path: Path | None = None) -> Settings:
         raise ConfigError("automation.file_stability_seconds cannot be negative")
     if not extensions:
         raise ConfigError("files.supported_extensions must not be empty")
+    if output_format not in {"csv", "json", "jsonl", "parquet"}:
+        raise ConfigError(
+            "files.output_format must be one of: csv, json, jsonl, parquet"
+        )
 
     return Settings(
         project_root=project_root,
@@ -143,6 +149,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
         watch_interval=watch_interval,
         file_stability_seconds=file_stability_seconds,
         supported_extensions=tuple(ext.lower() for ext in extensions),
+        output_format=output_format,
         csv_encodings=tuple(encodings),
         csv_delimiter=str(delimiter) if delimiter else None,
         log_level=str(logging_options.get("level", "INFO")).upper(),

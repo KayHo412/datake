@@ -9,7 +9,14 @@
     "history_db": "data/datake.db"
   },
   "files": {
-    "supported_extensions": [".csv", ".xlsx"]
+    "supported_extensions": [
+      ".csv",
+      ".xlsx",
+      ".json",
+      ".jsonl",
+      ".parquet"
+    ],
+    "output_format": "csv"
   },
   "csv": {
     "encodings": ["utf-8", "utf-8-sig", "latin-1"],

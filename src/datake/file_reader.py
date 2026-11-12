@@ -76,6 +76,12 @@ def read_file(path: Path, settings: Settings) -> ReadResult:
         return _read_csv(source, settings)
     if suffix == ".xlsx":
         return _read_excel(source)
+    if suffix == ".json":
+        return _read_json(source)
+    if suffix == ".jsonl":
+        return _read_json_lines(source)
+    if suffix == ".parquet":
+        return _read_parquet(source)
 
     return _failure(
         source,
@@ -138,6 +144,48 @@ def _read_excel(source: Path) -> ReadResult:
     if dataframe.empty and len(dataframe.columns) == 0:
         return _failure(source, "Excel workbook is empty.")
 
+    logger.info(
+        "Loaded %s (%s rows, %s columns)",
+        source.name,
+        len(dataframe),
+        len(dataframe.columns),
+    )
+    return ReadResult(
+        source_path=source,
+        status="success",
+        dataframe=dataframe,
+        row_count=len(dataframe),
+        column_names=[str(column) for column in dataframe.columns],
+    )
+
+
+def _read_json(source: Path) -> ReadResult:
+    try:
+        dataframe = pd.read_json(source)
+    except (ValueError, OSError) as exc:
+        return _failure(source, f"Could not parse JSON: {exc}")
+    return _success(source, dataframe)
+
+
+def _read_json_lines(source: Path) -> ReadResult:
+    try:
+        dataframe = pd.read_json(source, lines=True)
+    except (ValueError, OSError) as exc:
+        return _failure(source, f"Could not parse JSON Lines: {exc}")
+    return _success(source, dataframe)
+
+
+def _read_parquet(source: Path) -> ReadResult:
+    try:
+        dataframe = pd.read_parquet(source)
+    except (ImportError, OSError, ValueError) as exc:
+        return _failure(source, f"Could not parse Parquet: {exc}")
+    return _success(source, dataframe)
+
+
+def _success(source: Path, dataframe: pd.DataFrame) -> ReadResult:
+    if dataframe.empty and len(dataframe.columns) == 0:
+        return _failure(source, "Dataset is empty.")
     logger.info(
         "Loaded %s (%s rows, %s columns)",
         source.name,

@@ -1,4 +1,4 @@
-"""Orchestrate cleaning, optional merges, and writing cleaned CSV files.
+"""Orchestrate cleaning, optional merges, and writing cleaned tabular files.
 
 Input files stay in the input directory. Outputs go to the processed directory.
 """
@@ -60,7 +60,7 @@ def process_file(
     output_path: Path | None = None
     if write_output:
         output_path = cleaned_output_path(read_result.source_path, settings)
-        write_cleaned_csv(cleaned.dataframe, output_path)
+        write_cleaned_data(cleaned.dataframe, output_path)
         rejected_path = write_rejected_csv(
             cleaned.rejected_dataframe,
             read_result.source_path,
@@ -81,8 +81,8 @@ def process_file(
 
 
 def cleaned_output_path(source: Path, settings: Settings) -> Path:
-    """``data/input/foo.csv`` -> ``data/processed/foo_cleaned.csv``."""
-    return settings.processed_dir / f"{source.stem}_cleaned.csv"
+    """Return a processed path using the configured output format."""
+    return settings.processed_dir / f"{source.stem}_cleaned.{settings.output_format}"
 
 
 def write_cleaned_csv(dataframe: pd.DataFrame, output_path: Path) -> Path:
@@ -90,6 +90,29 @@ def write_cleaned_csv(dataframe: pd.DataFrame, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     dataframe.to_csv(output_path, index=False)
     logger.info("Wrote cleaned CSV: %s (%s rows)", output_path, len(dataframe))
+    return output_path
+
+
+def write_cleaned_data(dataframe: pd.DataFrame, output_path: Path) -> Path:
+    """Write a cleaned table according to the output file extension."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    suffix = output_path.suffix.lower()
+    if suffix == ".csv":
+        return write_cleaned_csv(dataframe, output_path)
+    if suffix == ".json":
+        dataframe.to_json(output_path, orient="records", indent=2, date_format="iso")
+    elif suffix == ".jsonl":
+        dataframe.to_json(output_path, orient="records", lines=True, date_format="iso")
+    elif suffix == ".parquet":
+        dataframe.to_parquet(output_path, index=False)
+    else:
+        raise ValueError(f"Unsupported output format: {suffix}")
+    logger.info(
+        "Wrote cleaned %s: %s (%s rows)",
+        suffix[1:].upper(),
+        output_path,
+        len(dataframe),
+    )
     return output_path
 
 
@@ -168,7 +191,7 @@ def process_and_merge(
     output_path: Path | None = None
     if write_output:
         output_path = settings.processed_dir / "merged.csv"
-        write_cleaned_csv(merged, output_path)
+        write_cleaned_data(merged, output_path)
     logger.info(
         "Merged %s compatible files into %s rows",
         len(frames),

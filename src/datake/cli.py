@@ -38,13 +38,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     read_parser = subparsers.add_parser(
         "read",
-        help="Read a CSV or Excel file and print a summary",
+        help="Read a supported tabular file and print a summary",
     )
     read_parser.add_argument("file", type=Path, help="Path to a CSV or Excel file")
 
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Read a CSV or Excel file and print a validation report",
+        help="Read a supported tabular file and print a validation report",
     )
     validate_parser.add_argument(
         "file", type=Path, help="Path to a CSV or Excel file"
@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     profile_parser = subparsers.add_parser(
         "profile",
-        help="Summarize a CSV or Excel file without changing it",
+        help="Summarize a supported tabular file without changing it",
     )
     profile_parser.add_argument(
         "file", type=Path, help="Path to a CSV or Excel file"
@@ -65,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     clean_parser = subparsers.add_parser(
         "clean",
-        help="Clean a CSV or Excel file and write a CSV copy to data/processed",
+        help="Clean a supported tabular file using the configured output format",
     )
     clean_parser.add_argument("file", type=Path, help="Path to a CSV or Excel file")
 
