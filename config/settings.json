@@ -59,5 +59,17 @@
     "drop_invalid_numeric": true,
     "clamp_numeric": true,
     "drop_invalid_emails": true
+  },
+  "profiles": {
+    "lenient_customer_import": {
+      "validation": {
+        "required_columns": ["customer_id"],
+        "email_columns": [],
+        "unique_columns": ["customer_id"]
+      },
+      "cleaning": {
+        "drop_if_missing": ["customer_id"]
+      }
+    }
   }
 }

@@ -41,9 +41,12 @@ def ensure_data_directories(settings: Settings) -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
-def load_runtime(config_path: Path | None = None) -> Settings:
+def load_runtime(
+    config_path: Path | None = None,
+    profile: str | None = None,
+) -> Settings:
     """Load settings, configure logging, and ensure data folders exist."""
-    settings = load_settings(config_path)
+    settings = load_settings(config_path, profile=profile)
     configure_logging(settings)
     ensure_data_directories(settings)
     return settings
@@ -61,9 +64,10 @@ def read_tabular_file(
 def validate_tabular_file(
     path: Path,
     config_path: Path | None = None,
+    profile: str | None = None,
 ) -> tuple[ReadResult, ValidationSummary | None]:
     """Read a file and, if that succeeds, produce a validation summary."""
-    settings = load_runtime(config_path)
+    settings = load_runtime(config_path, profile=profile)
     read_result = read_file(path, settings)
     if not read_result.succeeded or read_result.dataframe is None:
         return read_result, None
@@ -115,9 +119,10 @@ def compare_tabular_files(
 def clean_tabular_file(
     path: Path,
     config_path: Path | None = None,
+    profile: str | None = None,
 ) -> ProcessResult:
     """Read one file, clean a copy, and write CSV to the processed folder."""
-    settings = load_runtime(config_path)
+    settings = load_runtime(config_path, profile=profile)
     return process_file(path, settings, write_output=True)
 
 

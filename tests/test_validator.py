@@ -189,3 +189,25 @@ def test_validation_does_not_mutate_dataframe(tmp_path: Path) -> None:
     validate_dataframe(dataframe, settings)
 
     pd.testing.assert_frame_equal(dataframe, original)
+
+
+def test_named_profile_overrides_base_rules(tmp_path: Path) -> None:
+    config_path = write_settings(tmp_path)
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    raw["profiles"] = {
+        "lenient": {
+            "validation": {
+                "required_columns": ["customer_id"],
+                "email_columns": [],
+            },
+            "cleaning": {"drop_if_missing": ["customer_id"]},
+        }
+    }
+    config_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    settings = load_settings(config_path, profile="lenient")
+    summary = validate_dataframe(pd.DataFrame({"customer_id": [1]}), settings)
+
+    assert settings.profile_name == "lenient"
+    assert settings.available_profiles == ("lenient",)
+    assert summary.passed

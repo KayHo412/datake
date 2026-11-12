@@ -2,9 +2,10 @@
 
 Automated data processing tool for CSV and Excel files.
 
-This project is being built in phases. **Phase 10** is in place: read, validate,
-profile, compare, clean, merge, monitor, and inspect processing history for CSV,
-Excel (`.xlsx`), JSON, JSON Lines, and Parquet files.
+This project is being built in phases. **Phase 11** is in place: read, validate,
+profile, compare, clean, merge, monitor, and inspect processing history using
+reusable named validation and cleaning profiles across CSV, Excel (`.xlsx`),
+JSON, JSON Lines, and Parquet files.
 
 ## Setup
 
@@ -20,11 +21,14 @@ pip install -e ".[dev]"
 datake read data/input/sample_customers.csv
 datake read data/input/sample_customers.xlsx
 datake validate data/input/sample_customers_dirty.csv
+datake validate data/input/sample_customers_dirty.csv --profile lenient_customer_import
 datake profile data/input/sample_customers_dirty.csv
 datake profile data/input/sample_customers_dirty.csv --json
 datake compare data/input/old.csv data/input/new.csv --key customer_id
 datake compare data/input/old.csv data/input/new.csv --key customer_id --json
 datake clean data/input/sample_customers_dirty.csv
+datake clean data/input/sample_customers_dirty.csv --profile lenient_customer_import
+datake profiles
 datake merge
 datake watch --once
 datake watch
@@ -37,12 +41,15 @@ datake watch --once --dry-run
 
 - `read` — load a CSV or `.xlsx` file and show rows (does not change it)
 - `validate` — list quality problems (does not change it)
+- `validate --profile NAME` — apply a named validation and cleaning rule profile
 - `profile` — summarize columns, missing values, duplicates, and common values
   without changing the file; numeric IQR outliers and singleton values are
   reported as unusual values
 - `compare` — report rows added, removed, and changed between two datasets;
   use repeated `--key` options to match records by one or more columns
 - `clean` — write a cleaned copy to `data/processed/` (original stays in `data/input/`)
+- `clean --profile NAME` — clean using a named rule profile
+- `profiles` — list named profiles configured in `settings.json`
 - `merge` — clean files in `data/input/` and combine those with the same columns
 - `watch --once` — process the current input batch and exit
 - `watch` — poll `data/input/` continuously for new files
@@ -191,12 +198,38 @@ profile -> validate -> dry-run -> clean -> compare -> publish
 - CSV remains the default output format for compatibility.
 - `files.output_format` selects `csv`, `json`, `jsonl`, or `parquet`.
 
-### Phase 11 — Reusable data rules (next)
+Named validation and cleaning profiles are now supported. A profile can
+override required columns, uniqueness, email and numeric rules, aliases, fills,
+date handling, and row-removal behavior without duplicating the base settings.
+Select one with `--profile NAME`; `datake profiles` lists available profiles.
 
-Add named schemas and cleaning profiles. A schema could say that a customer ID
-is required and unique, an email must be valid, and an amount cannot be
-negative. The same rules should work regardless of whether the data came from
-a file, website, API, or database.
+For example:
+
+```json
+{
+  "profiles": {
+    "lenient_customer_import": {
+      "validation": {
+        "required_columns": ["customer_id"],
+        "email_columns": []
+      },
+      "cleaning": {
+        "drop_if_missing": ["customer_id"]
+      }
+    }
+  }
+}
+```
+
+The same profile selection is available to `watch --profile NAME`, so files
+from an automated source use the same explicit rules as manual processing.
+
+### Phase 11 — Reusable data rules (complete)
+
+- Named rule profiles are loaded from `settings.json`.
+- Validation and cleaning commands can select a profile.
+- Automated watching can select a profile.
+- Existing top-level `validation` and `cleaning` settings remain the default.
 
 Add reusable transformations such as:
 

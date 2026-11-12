@@ -64,6 +64,8 @@ class Settings:
     file_stability_seconds: float
     supported_extensions: tuple[str, ...]
     output_format: str
+    profile_name: str | None
+    available_profiles: tuple[str, ...]
     csv_encodings: tuple[str, ...]
     csv_delimiter: str | None
     log_level: str
@@ -87,7 +89,10 @@ def find_project_root(start: Path | None = None) -> Path:
     )
 
 
-def load_settings(config_path: Path | None = None) -> Settings:
+def load_settings(
+    config_path: Path | None = None,
+    profile: str | None = None,
+) -> Settings:
     """Read JSON settings and resolve relative paths against the project root."""
     if config_path is None:
         project_root = find_project_root()
@@ -116,7 +121,22 @@ def load_settings(config_path: Path | None = None) -> Settings:
     encodings = csv_options.get("encodings") or ["utf-8"]
     extensions = files.get("supported_extensions") or [".csv"]
     output_format = str(files.get("output_format", "csv")).lower().lstrip(".")
-    validation_raw = raw.get("validation", {})
+    profiles = raw.get("profiles") or {}
+    if not isinstance(profiles, dict):
+        raise ConfigError("profiles must be an object")
+    if profile is not None and profile not in profiles:
+        available = ", ".join(sorted(profiles)) or "none"
+        raise ConfigError(
+            f"Unknown profile {profile!r}. Available profiles: {available}"
+        )
+    selected_profile = profiles.get(profile, {}) if profile else {}
+    if not isinstance(selected_profile, dict):
+        raise ConfigError(f"Profile {profile!r} must be an object")
+    validation_raw = _merge_rules(
+        raw.get("validation", {}),
+        selected_profile.get("validation", {}),
+        "validation",
+    )
     constraints_raw = validation_raw.get("numeric_constraints") or {}
     numeric_constraints = {
         column: {key: float(value) for key, value in bounds.items()}
@@ -162,8 +182,35 @@ def load_settings(config_path: Path | None = None) -> Settings:
             numeric_constraints=numeric_constraints,
             max_examples=int(validation_raw.get("max_examples") or 5),
         ),
-        cleaning=_load_cleaning(raw.get("cleaning", {}), validation_raw),
+        cleaning=_load_cleaning(
+            _merge_rules(
+                raw.get("cleaning", {}),
+                selected_profile.get("cleaning", {}),
+                "cleaning",
+            ),
+            validation_raw,
+        ),
+        profile_name=profile,
+        available_profiles=tuple(sorted(profiles)),
     )
+
+
+def _merge_rules(
+    base: Any,
+    overrides: Any,
+    section: str,
+) -> dict[str, Any]:
+    if not isinstance(base, dict) or not isinstance(overrides, dict):
+        raise ConfigError(f"{section} rules must be objects")
+    merged = dict(base)
+    for key, value in overrides.items():
+        if key == "numeric_constraints" and isinstance(value, dict):
+            constraints = dict(merged.get(key) or {})
+            constraints.update(value)
+            merged[key] = constraints
+        else:
+            merged[key] = value
+    return merged
 
 
 def _load_cleaning(

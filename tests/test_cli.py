@@ -133,3 +133,15 @@ def test_compare_json_output_with_key(tmp_path: Path, capsys) -> None:
     assert payload["added_count"] == 1
     assert payload["removed_count"] == 1
     assert payload["changed_count"] == 1
+
+
+def test_profiles_command_lists_configured_profiles(tmp_path: Path, capsys) -> None:
+    config_path = write_settings(tmp_path)
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    raw["profiles"] = {"lenient": {"validation": {"required_columns": []}}}
+    config_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    exit_code = main(["--config", str(config_path), "profiles"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "lenient"

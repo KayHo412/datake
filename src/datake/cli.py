@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from datake.automation import watch_input
+from datake.config import ConfigError, load_settings
 from datake.history import HistorySummary, ProcessingHistory, ProcessingRun
 from datake.main import (
     clean_tabular_file,
@@ -49,6 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument(
         "file", type=Path, help="Path to a CSV or Excel file"
     )
+    validate_parser.add_argument(
+        "--profile", default=None, help="Named validation and cleaning profile"
+    )
 
     profile_parser = subparsers.add_parser(
         "profile",
@@ -68,6 +72,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Clean a supported tabular file using the configured output format",
     )
     clean_parser.add_argument("file", type=Path, help="Path to a CSV or Excel file")
+    clean_parser.add_argument(
+        "--profile", default=None, help="Named validation and cleaning profile"
+    )
 
     compare_parser = subparsers.add_parser(
         "compare",
@@ -113,6 +120,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Preview processing without writing, recording, or moving files",
+    )
+    watch_parser.add_argument(
+        "--profile", default=None, help="Named validation and cleaning profile"
+    )
+    subparsers.add_parser(
+        "profiles",
+        help="List named validation and cleaning profiles",
     )
     status_parser = subparsers.add_parser(
         "status",
@@ -286,7 +300,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "validate":
-        result, summary = validate_tabular_file(args.file, config_path=args.config)
+        try:
+            result, summary = validate_tabular_file(
+                args.file,
+                config_path=args.config,
+                profile=args.profile,
+            )
+        except ConfigError as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
         if not result.succeeded or summary is None:
             print(f"FAILED: {result.error}", file=sys.stderr)
             return 1
@@ -306,7 +328,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "clean":
-        result = clean_tabular_file(args.file, config_path=args.config)
+        try:
+            result = clean_tabular_file(
+                args.file,
+                config_path=args.config,
+                profile=args.profile,
+            )
+        except ConfigError as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
         _print_process(result)
         return 0 if result.succeeded else 1
 
@@ -357,7 +387,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if failures == len(results) else 0
 
     if args.command == "watch":
-        settings = load_runtime(args.config)
+        try:
+            settings = load_runtime(args.config, profile=args.profile)
+        except ConfigError as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
         try:
             watch_input(
                 settings,
@@ -367,6 +401,19 @@ def main(argv: list[str] | None = None) -> int:
             )
         except KeyboardInterrupt:
             print("Watch stopped.")
+        return 0
+
+    if args.command == "profiles":
+        try:
+            settings = load_settings(args.config)
+        except ConfigError as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
+        if not settings.available_profiles:
+            print("No named profiles configured.")
+        else:
+            for profile in settings.available_profiles:
+                print(profile)
         return 0
 
     if args.command == "status":
