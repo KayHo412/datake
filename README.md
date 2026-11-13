@@ -34,6 +34,8 @@ datake fetch-csv https://docs.google.com/spreadsheets/d/ID/export?format=csv \
   --output data/input/products.csv
 datake fetch-sqlite data/source.db "SELECT * FROM products" \
   --output data/input/products.csv
+datake export data/input/products.csv \
+  --sqlite data/destinations/catalog.db --table products --if-exists replace
 datake merge
 datake watch --once
 datake watch
@@ -61,6 +63,7 @@ datake watch --once --dry-run
 - `fetch-postgres` — run a read-only PostgreSQL query (connector extra required)
 - `fetch-sftp` — fetch an SFTP file (connector extra required)
 - `fetch-s3` — fetch an S3 object (connector extra required)
+- `export` — clean and deliver a dataset to SQLite, an approved HTTP API, or S3
 - `merge` — clean files in `data/input/` and combine those with the same columns
 - `watch --once` — process the current input batch and exit
 - `watch` — poll `data/input/` continuously for new files
@@ -311,15 +314,14 @@ Datake must respect website terms, robots rules, request limits, and privacy.
 It must not bypass passwords, CAPTCHA systems, paywalls, or other security
 controls.
 
-### Phase 13 — Deliver data to useful destinations
+### Phase 13 — Deliver data to useful destinations (complete)
 
-Add outputs such as:
+- `export` delivers cleaned datasets to SQLite tables, approved HTTP JSON APIs,
+  and S3 objects.
+- Existing local outputs remain available in CSV, Excel, JSON, or Parquet.
 
-- Cleaned files in CSV, Excel, JSON, or Parquet.
-- Database tables.
-- Cloud storage.
-- Another approved API.
-- Scheduled business reports.
+Database tables, cloud storage, and another approved API are now supported.
+Destinations use explicit allowlisting and size limits where applicable.
 
 This will allow workflows such as:
 

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from datake.comparator import ComparisonSummary, compare_dataframes
 from datake.config import Settings, load_settings
+from datake.delivery import DeliveryError, post_json, write_s3, write_sqlite
 from datake.file_reader import ReadResult, list_input_files, read_file
 from datake.processor import ProcessResult, process_and_merge, process_file
 from datake.profiler import ProfileSummary, profile_dataframe
@@ -139,3 +140,34 @@ def merge_tabular_files(
         write_output=True,
     )
     return results, output_path
+
+
+def deliver_tabular_file(
+    path: Path,
+    *,
+    sqlite_path: Path | None = None,
+    table: str | None = None,
+    endpoint: str | None = None,
+    s3_uri: str | None = None,
+    if_exists: str = "fail",
+    config_path: Path | None = None,
+    profile: str | None = None,
+) -> tuple[ProcessResult, str]:
+    """Clean one file and deliver it to exactly one configured destination."""
+    targets = [sqlite_path is not None, endpoint is not None, s3_uri is not None]
+    if sum(targets) != 1:
+        raise DeliveryError("Choose exactly one destination.")
+    settings = load_runtime(config_path, profile=profile)
+    result = process_file(path, settings, write_output=False)
+    if not result.succeeded or result.dataframe is None:
+        return result, ""
+    if sqlite_path is not None:
+        if not table:
+            raise DeliveryError("--table is required for SQLite output.")
+        destination = str(write_sqlite(result.dataframe, sqlite_path, table, if_exists))
+    elif endpoint is not None:
+        destination = str(post_json(result.dataframe, endpoint, settings))
+    else:
+        assert s3_uri is not None
+        destination = write_s3(result.dataframe, s3_uri, settings)
+    return result, destination

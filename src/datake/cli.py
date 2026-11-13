@@ -18,6 +18,7 @@ from datake.connector import (
     fetch_sftp,
     fetch_sqlite,
 )
+from datake.delivery import DeliveryError
 from datake.history import HistorySummary, ProcessingHistory, ProcessingRun
 from datake.main import (
     clean_tabular_file,
@@ -171,6 +172,23 @@ def build_parser() -> argparse.ArgumentParser:
     s3_parser = subparsers.add_parser("fetch-s3", help="Fetch an S3 object")
     s3_parser.add_argument("uri")
     s3_parser.add_argument("--output", type=Path, required=True)
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Clean a file and deliver it to SQLite, HTTP, or S3",
+    )
+    export_parser.add_argument("file", type=Path)
+    export_parser.add_argument("--sqlite", type=Path, default=None)
+    export_parser.add_argument("--table", default=None)
+    export_parser.add_argument("--endpoint", default=None)
+    export_parser.add_argument("--s3", dest="s3_uri", default=None)
+    export_parser.add_argument(
+        "--if-exists",
+        choices=("fail", "replace", "append"),
+        default="fail",
+    )
+    export_parser.add_argument(
+        "--profile", default=None, help="Named validation and cleaning profile"
+    )
     status_parser = subparsers.add_parser(
         "status",
         help="Show automated processing history",
@@ -496,6 +514,29 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAILED: {exc}", file=sys.stderr)
             return 1
         print(f"Fetched: {path}")
+        return 0
+
+    if args.command == "export":
+        from datake.main import deliver_tabular_file
+
+        try:
+            result, destination = deliver_tabular_file(
+                args.file,
+                sqlite_path=args.sqlite,
+                table=args.table,
+                endpoint=args.endpoint,
+                s3_uri=args.s3_uri,
+                if_exists=args.if_exists,
+                config_path=args.config,
+                profile=args.profile,
+            )
+        except (ConfigError, DeliveryError) as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
+        if not result.succeeded:
+            print(f"FAILED: {result.error}", file=sys.stderr)
+            return 1
+        print(f"Delivered: {destination}")
         return 0
 
     if args.command == "status":
