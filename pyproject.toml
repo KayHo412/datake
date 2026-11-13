@@ -23,6 +23,11 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.8",
 ]
+connectors = [
+    "boto3>=1.35",
+    "paramiko>=3.4",
+    "psycopg[binary]>=3.2",
+]
 
 [project.scripts]
 datake = "datake.cli:main"

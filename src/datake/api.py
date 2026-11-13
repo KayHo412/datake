@@ -6,10 +6,11 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from datake.automation import write_report
@@ -73,6 +74,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "size_bytes": len(content),
             "status": "uploaded",
         }
+
+    @app.post("/webhooks/{source}", status_code=202)
+    async def receive_webhook(source: str, request: Request) -> dict[str, object]:
+        """Store an approved JSON webhook payload for normal file processing."""
+        safe_source = "".join(
+            character
+            for character in source
+            if character.isalnum() or character in "-_"
+        )
+        if not safe_source:
+            raise HTTPException(status_code=400, detail="Invalid webhook source")
+        content_type = request.headers.get("content-type", "").split(";", 1)[0]
+        if content_type != "application/json":
+            raise HTTPException(status_code=415, detail="Webhook must send JSON")
+        content = await request.body()
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Payload is too large")
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+        if not isinstance(payload, (list, dict)):
+            raise HTTPException(status_code=400, detail="JSON object or array required")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+        path = runtime.input_dir / f"webhook_{safe_source}_{timestamp}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return {"status": "accepted", "path": str(path)}
 
     @app.post("/files/{file_id}/process", status_code=202)
     def process_uploaded_file(file_id: str) -> dict[str, object]:

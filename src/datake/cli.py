@@ -9,6 +9,15 @@ from pathlib import Path
 
 from datake.automation import watch_input
 from datake.config import ConfigError, load_settings
+from datake.connector import (
+    ConnectorError,
+    fetch_csv,
+    fetch_json,
+    fetch_postgres,
+    fetch_s3,
+    fetch_sftp,
+    fetch_sqlite,
+)
 from datake.history import HistorySummary, ProcessingHistory, ProcessingRun
 from datake.main import (
     clean_tabular_file,
@@ -128,6 +137,40 @@ def build_parser() -> argparse.ArgumentParser:
         "profiles",
         help="List named validation and cleaning profiles",
     )
+    fetch_parser = subparsers.add_parser(
+        "fetch",
+        help="Fetch an approved JSON API response into the input directory",
+    )
+    fetch_parser.add_argument("url", help="Approved HTTP(S) JSON endpoint")
+    fetch_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Destination .json file, usually under data/input",
+    )
+    csv_parser = subparsers.add_parser(
+        "fetch-csv", help="Fetch an approved CSV URL, including published Sheets"
+    )
+    csv_parser.add_argument("url")
+    csv_parser.add_argument("--output", type=Path, required=True)
+    sqlite_parser = subparsers.add_parser(
+        "fetch-sqlite", help="Run a read-only SQLite query"
+    )
+    sqlite_parser.add_argument("database", type=Path)
+    sqlite_parser.add_argument("query")
+    sqlite_parser.add_argument("--output", type=Path, required=True)
+    postgres_parser = subparsers.add_parser(
+        "fetch-postgres", help="Run a read-only PostgreSQL query"
+    )
+    postgres_parser.add_argument("connection_url")
+    postgres_parser.add_argument("query")
+    postgres_parser.add_argument("--output", type=Path, required=True)
+    sftp_parser = subparsers.add_parser("fetch-sftp", help="Fetch an SFTP file")
+    sftp_parser.add_argument("url")
+    sftp_parser.add_argument("--output", type=Path, required=True)
+    s3_parser = subparsers.add_parser("fetch-s3", help="Fetch an S3 object")
+    s3_parser.add_argument("uri")
+    s3_parser.add_argument("--output", type=Path, required=True)
     status_parser = subparsers.add_parser(
         "status",
         help="Show automated processing history",
@@ -414,6 +457,45 @@ def main(argv: list[str] | None = None) -> int:
         else:
             for profile in settings.available_profiles:
                 print(profile)
+        return 0
+
+    if args.command == "fetch":
+        try:
+            settings = load_settings(args.config)
+            path = fetch_json(args.url, args.output, settings)
+        except (ConfigError, ConnectorError) as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
+        print(f"Fetched: {path}")
+        return 0
+
+    if args.command in {
+        "fetch-csv",
+        "fetch-sqlite",
+        "fetch-postgres",
+        "fetch-sftp",
+        "fetch-s3",
+    }:
+        try:
+            settings = load_settings(args.config)
+            if args.command == "fetch-csv":
+                path = fetch_csv(args.url, args.output, settings)
+            elif args.command == "fetch-sqlite":
+                path = fetch_sqlite(args.database, args.query, args.output)
+            elif args.command == "fetch-postgres":
+                path = fetch_postgres(
+                    args.connection_url,
+                    args.query,
+                    args.output,
+                )
+            elif args.command == "fetch-sftp":
+                path = fetch_sftp(args.url, args.output, settings)
+            else:
+                path = fetch_s3(args.uri, args.output, settings)
+        except (ConfigError, ConnectorError) as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
+        print(f"Fetched: {path}")
         return 0
 
     if args.command == "status":

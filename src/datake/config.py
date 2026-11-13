@@ -66,6 +66,10 @@ class Settings:
     output_format: str
     profile_name: str | None
     available_profiles: tuple[str, ...]
+    connector_timeout: float
+    connector_max_bytes: int
+    connector_allowed_hosts: tuple[str, ...]
+    connector_user_agent: str
     csv_encodings: tuple[str, ...]
     csv_delimiter: str | None
     log_level: str
@@ -112,6 +116,7 @@ def load_settings(
     files = raw.get("files", {})
     csv_options = raw.get("csv", {})
     logging_options = raw.get("logging", {})
+    connector_options = raw.get("connectors", {})
 
     def resolve(key: str, default: str) -> Path:
         value = Path(paths.get(key, default))
@@ -156,6 +161,12 @@ def load_settings(
         raise ConfigError(
             "files.output_format must be one of: csv, json, jsonl, parquet"
         )
+    connector_timeout = float(connector_options.get("timeout_seconds", 15))
+    connector_max_bytes = int(
+        connector_options.get("max_response_bytes", 10 * 1024 * 1024)
+    )
+    if connector_timeout <= 0 or connector_max_bytes <= 0:
+        raise ConfigError("Connector timeout and response limit must be positive")
 
     return Settings(
         project_root=project_root,
@@ -192,6 +203,15 @@ def load_settings(
         ),
         profile_name=profile,
         available_profiles=tuple(sorted(profiles)),
+        connector_timeout=connector_timeout,
+        connector_max_bytes=connector_max_bytes,
+        connector_allowed_hosts=tuple(
+            str(host).lower()
+            for host in (connector_options.get("allowed_hosts") or ())
+        ),
+        connector_user_agent=str(
+            connector_options.get("user_agent", "Datake/0.1")
+        ),
     )
 
 

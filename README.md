@@ -2,10 +2,10 @@
 
 Automated data processing tool for CSV and Excel files.
 
-This project is being built in phases. **Phase 11** is in place: read, validate,
-profile, compare, clean, merge, monitor, and inspect processing history using
-reusable named validation and cleaning profiles across CSV, Excel (`.xlsx`),
-JSON, JSON Lines, and Parquet files.
+This project is being built in phases. **Phase 12** is in progress: read,
+validate, profile, compare, clean, merge, monitor, and inspect processing
+history using reusable named profiles and a safe REST/JSON connector across CSV,
+Excel (`.xlsx`), JSON, JSON Lines, and Parquet files.
 
 ## Setup
 
@@ -29,6 +29,11 @@ datake compare data/input/old.csv data/input/new.csv --key customer_id --json
 datake clean data/input/sample_customers_dirty.csv
 datake clean data/input/sample_customers_dirty.csv --profile lenient_customer_import
 datake profiles
+datake fetch https://api.example.com/products --output data/input/products.json
+datake fetch-csv https://docs.google.com/spreadsheets/d/ID/export?format=csv \
+  --output data/input/products.csv
+datake fetch-sqlite data/source.db "SELECT * FROM products" \
+  --output data/input/products.csv
 datake merge
 datake watch --once
 datake watch
@@ -50,6 +55,12 @@ datake watch --once --dry-run
 - `clean` — write a cleaned copy to `data/processed/` (original stays in `data/input/`)
 - `clean --profile NAME` — clean using a named rule profile
 - `profiles` — list named profiles configured in `settings.json`
+- `fetch` — fetch an approved JSON API response into a `.json` input file
+- `fetch-csv` — fetch an approved CSV URL, including a published Google Sheet
+- `fetch-sqlite` — run a read-only SQLite query into a Datake input file
+- `fetch-postgres` — run a read-only PostgreSQL query (connector extra required)
+- `fetch-sftp` — fetch an SFTP file (connector extra required)
+- `fetch-s3` — fetch an S3 object (connector extra required)
 - `merge` — clean files in `data/input/` and combine those with the same columns
 - `watch --once` — process the current input batch and exit
 - `watch` — poll `data/input/` continuously for new files
@@ -111,6 +122,37 @@ default to CSV:
 Parquet support uses the `pyarrow` dependency installed by the project.
 For large files copied into `data/input`, set `file_stability_seconds` so the
 watcher waits until size and modification time stop changing before reading.
+
+## REST connector
+
+Phase 12 begins with a deliberately narrow REST connector. It performs a
+read-only HTTP GET for an approved JSON endpoint and saves an array of records
+as a normal `.json` input file:
+
+```bash
+datake fetch https://api.example.com/products \
+  --output data/input/products.json
+datake validate data/input/products.json
+datake clean data/input/products.json
+```
+
+Configure connector safety limits in `settings.json`:
+
+```json
+{
+  "connectors": {
+    "timeout_seconds": 15,
+    "max_response_bytes": 10485760,
+    "allowed_hosts": ["api.example.com"],
+    "user_agent": "Datake/0.1"
+  }
+}
+```
+
+The connector accepts a top-level array or an array under `data`, `results`, or
+`items`. It does not log in, bypass authentication, solve CAPTCHAs, scrape
+paywalled content, or bypass robots rules. Use it only with sources that
+explicitly permit automated access and configure `allowed_hosts` in production.
 
 ## Tests
 
@@ -239,16 +281,21 @@ Add reusable transformations such as:
 - Filtering and deduplicating records.
 - Joining or summarizing datasets.
 
-### Phase 12 — Collect data from other places
+### Phase 12 — Collect data from other places (complete)
 
-Add connectors for approved sources such as:
+- REST/JSON and CSV URL connectors are implemented with host allowlisting,
+  timeouts, response-size limits, and the existing validation/cleaning flow.
+- Published Google Sheets can be collected through their CSV export URL.
+- Read-only SQLite and PostgreSQL query connectors are available.
+- SFTP and S3 object connectors use optional dependencies and environment-based
+  credentials.
+- `POST /webhooks/{source}` accepts JSON payloads and writes them into the
+  normal input directory for validation and cleaning.
+- All connectors produce normal Datake input files, so they share the same
+  validation, cleaning, reporting, and history pipeline.
 
-- PostgreSQL and other databases.
-- REST APIs.
-- Google Sheets.
-- SFTP and cloud storage.
-- Webhooks.
-- Websites where automated collection is permitted.
+Collection from websites is limited to explicitly approved structured JSON or
+CSV endpoints. Datake does not scrape arbitrary pages.
 
 Website collection should create a table internally and send it through the
 same validation, cleaning, reporting, and history system. A user would not

@@ -69,6 +69,20 @@ def test_api_upload_process_report_and_download(tmp_path: Path) -> None:
     assert b"ada@example.com" in download.content
 
 
+def test_api_webhook_writes_json_input(tmp_path: Path) -> None:
+    client = TestClient(create_app(load_settings(write_settings(tmp_path))))
+
+    response = client.post(
+        "/webhooks/shop",
+        json=[{"customer_id": 1, "email": "ada@example.com"}],
+    )
+
+    assert response.status_code == 202
+    path = Path(response.json()["path"])
+    assert path.is_file()
+    assert json.loads(path.read_text(encoding="utf-8"))[0]["customer_id"] == 1
+
+
 def test_api_rejects_unsupported_upload(tmp_path: Path) -> None:
     client = TestClient(create_app(load_settings(write_settings(tmp_path))))
 
