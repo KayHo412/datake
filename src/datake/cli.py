@@ -20,6 +20,7 @@ from datake.connector import (
 )
 from datake.delivery import DeliveryError
 from datake.history import HistorySummary, ProcessingHistory, ProcessingRun
+from datake.jobs import JobStore, run_job, watch_job
 from datake.main import (
     clean_tabular_file,
     compare_tabular_files,
@@ -172,6 +173,15 @@ def build_parser() -> argparse.ArgumentParser:
     s3_parser = subparsers.add_parser("fetch-s3", help="Fetch an S3 object")
     s3_parser.add_argument("uri")
     s3_parser.add_argument("--output", type=Path, required=True)
+    job_parser = subparsers.add_parser("job", help="Run and control repeatable jobs")
+    job_parser.add_argument(
+        "action",
+        choices=("run", "watch", "cancel", "status"),
+        help="Job operation",
+    )
+    job_parser.add_argument("name", nargs="?", help="Configured job name")
+    job_parser.add_argument("--dry-run", action="store_true")
+    job_parser.add_argument("--limit", type=int, default=20)
     export_parser = subparsers.add_parser(
         "export",
         help="Clean a file and deliver it to SQLite, HTTP, or S3",
@@ -538,6 +548,45 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"Delivered: {destination}")
         return 0
+
+    if args.command == "job":
+        try:
+            settings = load_runtime(args.config)
+            if args.action == "status":
+                runs = JobStore(settings).runs(args.name, args.limit)
+                for run in runs:
+                    print(
+                        f"{run.job_name} {run.status.upper()} "
+                        f"attempts={run.attempts} processed={run.processed_count} "
+                        f"{run.completed_at}"
+                    )
+                if not runs:
+                    print("No job runs recorded.")
+                return 0
+            if not args.name:
+                parser.error("job run/watch/cancel requires a job name")
+            if args.action == "cancel":
+                JobStore(settings).cancel(args.name)
+                print(f"Cancelled: {args.name}")
+                return 0
+            if args.action == "run":
+                JobStore(settings).reset_cancelled(args.name)
+                run = run_job(settings, args.name, dry_run=args.dry_run)
+                print(
+                    f"{run.job_name}: {run.status} "
+                    f"processed={run.processed_count} attempts={run.attempts}"
+                )
+                return 0 if run.status == "success" else 1
+            try:
+                JobStore(settings).reset_cancelled(args.name)
+                watch_job(settings, args.name, dry_run=args.dry_run)
+            except KeyboardInterrupt:
+                JobStore(settings).cancel(args.name)
+                print(f"Cancelled: {args.name}")
+            return 0
+        except (ConfigError, ValueError) as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
 
     if args.command == "status":
         if args.limit < 0:

@@ -49,6 +49,17 @@ class CleaningSettings:
 
 
 @dataclass(frozen=True)
+class JobSettings:
+    """A repeatable automation job definition."""
+
+    name: str
+    interval: float
+    retries: int
+    profile: str | None
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class Settings:
     """Typed view of config/settings.json."""
 
@@ -75,6 +86,7 @@ class Settings:
     log_level: str
     validation: ValidationSettings
     cleaning: CleaningSettings
+    jobs: tuple[JobSettings, ...]
 
     @property
     def config_path(self) -> Path:
@@ -117,6 +129,10 @@ def load_settings(
     csv_options = raw.get("csv", {})
     logging_options = raw.get("logging", {})
     connector_options = raw.get("connectors", {})
+    jobs_raw = raw.get("jobs") or []
+    if not isinstance(jobs_raw, list):
+        raise ConfigError("jobs must be an array")
+    jobs = tuple(_load_job(item) for item in jobs_raw)
 
     def resolve(key: str, default: str) -> Path:
         value = Path(paths.get(key, default))
@@ -201,6 +217,7 @@ def load_settings(
             ),
             validation_raw,
         ),
+        jobs=jobs,
         profile_name=profile,
         available_profiles=tuple(sorted(profiles)),
         connector_timeout=connector_timeout,
@@ -212,6 +229,23 @@ def load_settings(
         connector_user_agent=str(
             connector_options.get("user_agent", "Datake/0.1")
         ),
+    )
+
+
+def _load_job(raw: Any) -> JobSettings:
+    if not isinstance(raw, dict) or not raw.get("name"):
+        raise ConfigError("Each job requires a name")
+    name = str(raw["name"])
+    interval = float(raw.get("interval_seconds", 60))
+    retries = int(raw.get("retries", 0))
+    if interval <= 0 or retries < 0:
+        raise ConfigError(f"Job {name!r} has invalid interval or retries")
+    return JobSettings(
+        name=name,
+        interval=interval,
+        retries=retries,
+        profile=str(raw["profile"]) if raw.get("profile") else None,
+        enabled=bool(raw.get("enabled", True)),
     )
 
 

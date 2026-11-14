@@ -35,6 +35,14 @@
     "allowed_hosts": [],
     "user_agent": "Datake/0.1"
   },
+  "jobs": [
+    {
+      "name": "input_cleanup",
+      "interval_seconds": 60,
+      "retries": 1,
+      "enabled": true
+    }
+  ],
   "validation": {
     "required_columns": ["customer_id", "email"],
     "date_columns": ["signup_date"],

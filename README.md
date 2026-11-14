@@ -44,6 +44,11 @@ datake status --json
 datake report --status failed
 datake report --json
 datake watch --once --dry-run
+datake job run input_cleanup
+datake job run input_cleanup --dry-run
+datake job watch input_cleanup
+datake job cancel input_cleanup
+datake job status
 ```
 
 - `read` — load a CSV or `.xlsx` file and show rows (does not change it)
@@ -73,6 +78,10 @@ datake watch --once --dry-run
 - `report --json` — emit report history for scripts and monitoring tools
 - `watch --dry-run` — preview files without writing output, moving files, or
   recording history
+- `job run NAME` — run a configured repeatable job once
+- `job watch NAME` — run a configured job on its interval
+- `job cancel NAME` — request cancellation of a running job
+- `job status` — show persistent job runs and outcomes
 
 ## Automated processing
 
@@ -329,20 +338,18 @@ This will allow workflows such as:
 online shop -> Datake -> clean data -> company database
 ```
 
-### Phase 14 — Run repeatable jobs automatically
+### Phase 14 — Run repeatable jobs automatically (complete)
 
-Add saved jobs that can run on a schedule or when new information arrives.
-A job could collect data, clean it, compare it with the previous run, save the
-result, and send an alert when something changes.
+Saved jobs can run on an interval or once on demand. Jobs process the normal
+input directory and use the same cleaning, reporting, archive, quarantine, and
+history behavior as `watch`.
 
-Planned job features include:
+- Job definitions are stored in `settings.json` under `"jobs"`.
+- Jobs support retry counts, dry runs, cancellation, and persistent SQLite
+  run history.
+- Use `job status` to inspect attempts, processed-file counts, and outcomes.
 
-- Scheduling.
-- Retries and failure handling.
-- Dry runs.
-- Manual reruns and cancellation.
-- Job history.
-- Email, Slack, Teams, or webhook alerts.
+Email, Slack, Teams, and webhook alerts remain future work.
 
 ### Phase 15 — Backend API hardening
 
