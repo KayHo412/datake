@@ -12,6 +12,7 @@ from pathlib import Path
 from datake.config import Settings
 from datake.file_reader import list_input_files
 from datake.history import ProcessingHistory, file_hash
+from datake.privacy import detect_sensitive_columns
 from datake.processor import ProcessResult, process_file
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,11 @@ def write_report(result: ProcessResult, settings: Settings, digest: str) -> Path
             else None
         ),
         "actions": result.actions,
+        "sensitive_columns": (
+            detect_sensitive_columns(result.dataframe.columns)
+            if result.dataframe is not None
+            else {}
+        ),
         "output_path": str(result.output_path) if result.output_path else None,
         "rejected_path": str(result.rejected_path) if result.rejected_path else None,
         "created_at": datetime.now(UTC).isoformat(),

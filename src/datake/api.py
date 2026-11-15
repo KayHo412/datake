@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from datake.automation import write_report
 from datake.config import Settings, load_settings
+from datake.history import ProcessingHistory
 from datake.processor import ProcessResult, process_file
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -33,23 +36,149 @@ class ApiJob:
     error: str | None = None
 
 
+class ApiStore:
+    """Persist API file and job metadata in the application history database."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.path = settings.history_db
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.path) as connection:
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS api_files (
+                    file_id TEXT PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    path TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS api_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    file_id TEXT NOT NULL,
+                    filename TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    rows_in INTEGER,
+                    rows_out INTEGER,
+                    rejected_rows INTEGER,
+                    report_path TEXT,
+                    output_path TEXT,
+                    error TEXT
+                );
+                """
+            )
+
+    def save_file(self, file_id: str, filename: str, path: Path) -> None:
+        with sqlite3.connect(self.path) as connection:
+            connection.execute(
+                "INSERT INTO api_files (file_id, filename, path) VALUES (?, ?, ?)",
+                (file_id, filename, str(path)),
+            )
+
+    def files(self) -> dict[str, Path]:
+        with sqlite3.connect(self.path) as connection:
+            rows = connection.execute("SELECT file_id, path FROM api_files").fetchall()
+        return {row[0]: Path(row[1]) for row in rows}
+
+    def save_job(self, job: ApiJob) -> None:
+        clean = job.result.clean_result if job.result else None
+        output = job.result.output_path if job.result else None
+        with sqlite3.connect(self.path) as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO api_jobs
+                    (job_id, file_id, filename, status, rows_in, rows_out,
+                     rejected_rows, report_path, output_path, error)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job.job_id,
+                    job.file_id,
+                    job.filename,
+                    job.status,
+                    clean.rows_in if clean else None,
+                    clean.rows_out if clean else None,
+                    len(clean.rejected_dataframe) if clean else None,
+                    str(job.report_path) if job.report_path else None,
+                    str(output) if output else None,
+                    job.error,
+                ),
+            )
+
+    def load_job(self, job_id: str) -> ApiJob | None:
+        with sqlite3.connect(self.path) as connection:
+            row = connection.execute(
+                """
+                SELECT job_id, file_id, filename, status, rows_in, rows_out,
+                       rejected_rows, report_path, output_path, error
+                FROM api_jobs WHERE job_id = ?
+                """,
+                (job_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return ApiJob(
+            job_id=row[0],
+            file_id=row[1],
+            filename=row[2],
+            status=row[3],
+            report_path=Path(row[7]) if row[7] else None,
+            error=row[9],
+        )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Create the Datake API application."""
     runtime = settings or load_settings()
+    store = ApiStore(runtime)
     upload_dir = runtime.project_root / "data" / "api_uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    files: dict[str, Path] = {}
+    files = store.files()
     jobs: dict[str, ApiJob] = {}
     lock = Lock()
 
     app = FastAPI(title="Datake API", version="0.1.0")
 
+    def require_api_key(request: Request) -> None:
+        expected = os.getenv("DATAKE_API_KEY")
+        if expected and request.headers.get("x-api-key") != expected:
+            raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "version": "0.1.0"}
 
+    @app.get("/dashboard")
+    def dashboard(request: Request) -> dict[str, object]:
+        """Return aggregate processing and privacy metadata for a dashboard."""
+        require_api_key(request)
+        summary = ProcessingHistory(runtime).summary(limit=20)
+        reports: list[dict[str, object]] = []
+        for run in summary.recent_runs:
+            if not run.report_path or not run.report_path.is_file():
+                continue
+            payload = json.loads(run.report_path.read_text(encoding="utf-8"))
+            reports.append(
+                {
+                    "source_path": payload.get("source_path"),
+                    "status": payload.get("status"),
+                    "rows_in": payload.get("rows_in"),
+                    "rows_out": payload.get("rows_out"),
+                    "rejected_rows": payload.get("rejected_rows"),
+                    "sensitive_columns": payload.get("sensitive_columns", {}),
+                    "created_at": payload.get("created_at"),
+                }
+            )
+        return {
+            "total_runs": summary.total,
+            "successful_runs": summary.successful,
+            "failed_runs": summary.failed,
+            "recent_runs": reports,
+        }
+
     @app.post("/files", status_code=201)
-    async def upload_file(file: UploadFile = File(...)) -> dict[str, object]:
+    async def upload_file(
+        request: Request,
+        file: UploadFile = File(...),
+    ) -> dict[str, object]:
+        require_api_key(request)
         filename = Path(file.filename or "").name
         suffix = Path(filename).suffix.lower()
         if not filename or suffix not in runtime.supported_extensions:
@@ -68,6 +197,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         stored_path.write_bytes(content)
         with lock:
             files[file_id] = stored_path
+        store.save_file(file_id, filename, stored_path)
         return {
             "file_id": file_id,
             "filename": filename,
@@ -78,6 +208,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/webhooks/{source}", status_code=202)
     async def receive_webhook(source: str, request: Request) -> dict[str, object]:
         """Store an approved JSON webhook payload for normal file processing."""
+        require_api_key(request)
         safe_source = "".join(
             character
             for character in source
@@ -104,7 +235,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "accepted", "path": str(path)}
 
     @app.post("/files/{file_id}/process", status_code=202)
-    def process_uploaded_file(file_id: str) -> dict[str, object]:
+    def process_uploaded_file(
+        file_id: str,
+        request: Request,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, object]:
+        require_api_key(request)
         source = files.get(file_id)
         if source is None:
             raise HTTPException(status_code=404, detail="File not found")
@@ -114,40 +250,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             job_id=job_id,
             file_id=file_id,
             filename=source.name,
-            status="running",
+            status="queued",
         )
         with lock:
             jobs[job_id] = job
-
-        result = process_file(source, runtime, write_output=True)
-        job.result = result
-        job.status = "completed" if result.succeeded else "failed"
-        job.error = result.error
-        if result.succeeded:
-            report_path = write_report(
-                result,
-                runtime,
-                hashlib.sha256(source.read_bytes()).hexdigest(),
-            )
-            job.report_path = report_path
+        store.save_job(job)
+        background_tasks.add_task(process_api_job, job_id, source)
         return _job_payload(job)
 
     @app.get("/jobs/{job_id}")
-    def get_job(job_id: str) -> dict[str, object]:
-        job = jobs.get(job_id)
+    def get_job(job_id: str, request: Request) -> dict[str, object]:
+        require_api_key(request)
+        job = jobs.get(job_id) or store.load_job(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found")
         return _job_payload(job)
 
     @app.get("/jobs/{job_id}/report")
-    def get_job_report(job_id: str) -> dict[str, object]:
-        job = jobs.get(job_id)
+    def get_job_report(job_id: str, request: Request) -> dict[str, object]:
+        require_api_key(request)
+        job = jobs.get(job_id) or store.load_job(job_id)
         if job is None or job.report_path is None:
             raise HTTPException(status_code=404, detail="Report not found")
         return json.loads(job.report_path.read_text(encoding="utf-8"))
 
     @app.get("/files/{file_id}/download")
-    def download_file(file_id: str) -> FileResponse:
+    def download_file(file_id: str, request: Request) -> FileResponse:
+        require_api_key(request)
         source = files.get(file_id)
         if source is None:
             raise HTTPException(status_code=404, detail="File not found")
@@ -159,6 +288,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             media_type=_media_type(job.result.output_path),
             filename=job.result.output_path.name,
         )
+
+    def process_api_job(job_id: str, source: Path) -> None:
+        job = jobs[job_id]
+        job.status = "running"
+        store.save_job(job)
+        try:
+            result = process_file(source, runtime, write_output=True)
+            job.result = result
+            job.status = "completed" if result.succeeded else "failed"
+            job.error = result.error
+            if result.succeeded:
+                job.report_path = write_report(
+                    result,
+                    runtime,
+                    hashlib.sha256(source.read_bytes()).hexdigest(),
+                )
+            ProcessingHistory(runtime).record(
+                source,
+                hashlib.sha256(source.read_bytes()).hexdigest(),
+                result.status,
+                report_path=job.report_path,
+                error=result.error,
+            )
+        except (OSError, ValueError, RuntimeError) as exc:
+            job.status = "failed"
+            job.error = str(exc)
+        store.save_job(job)
 
     return app
 

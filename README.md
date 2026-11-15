@@ -196,10 +196,11 @@ Open the interactive API page at
 - `GET /jobs/{job_id}/report` — read the JSON report.
 - `GET /files/{file_id}/download` — download the cleaned CSV.
 
-The API currently stores uploads and outputs locally and keeps job records in
-memory. Restarting the server clears the in-memory job list. This is
-intentional for the MVP; a later backend phase will add persistent storage,
-authentication, and background processing.
+API files and job metadata are persisted in the configured SQLite history
+database, while processing runs in a FastAPI background task. Clients should
+poll `GET /jobs/{job_id}` until the status is `completed` or `failed`.
+Set `DATAKE_API_KEY` to require an `X-API-Key` header on all file, webhook, job,
+and download endpoints; `/health` remains public.
 
 ## Backend MVP
 
@@ -220,9 +221,9 @@ interactive API page. The available endpoints are:
 - `GET /jobs/{job_id}/report`
 - `GET /files/{file_id}/download`
 
-The MVP accepts CSV and `.xlsx` uploads, processes them immediately, stores
-files locally, and returns a cleaned CSV and JSON report. Job records are held
-in memory and are cleared when the server restarts.
+The backend accepts all configured tabular uploads, queues processing in the
+background, stores files and job metadata locally, and returns a cleaned file
+and JSON report. API job metadata survives server restarts.
 
 ## Future roadmap
 
@@ -351,7 +352,7 @@ history behavior as `watch`.
 
 Email, Slack, Teams, and webhook alerts remain future work.
 
-### Phase 15 — Backend API hardening
+### Phase 15 — Backend API hardening (complete)
 
 Expose Datake through a web backend so a website or another application can
 use it. The first general job workflow is planned to support:
@@ -377,12 +378,26 @@ The `POST /jobs` request should identify the source:
 ```
 
 The same job system should later support uploaded files, APIs, and databases.
-Large jobs should run in the background so a web request does not need to wait
-for processing to finish.
+Large jobs run in the background so a web request does not need to wait for
+processing to finish. API metadata is persisted in SQLite, and optional
+`DATAKE_API_KEY` protection is available for non-health endpoints.
 
 ### Phase 16 — Reports, dashboards, and privacy
 
-Future reports and dashboards could show:
+Reports now include conservative, name-based privacy metadata without copying
+cell values. The API also exposes `GET /dashboard`, which returns aggregate
+processing totals, recent quality metrics, rejected-row counts, and detected
+sensitive column names for a dashboard client.
+
+```text
+GET /dashboard
+```
+
+Likely personal-data columns are classified as email, phone, name, or address.
+This detection is intentionally metadata-only and should be reviewed before
+making privacy decisions.
+
+Reports and dashboards can show:
 
 - Sales or other business summaries.
 - Processing history.
@@ -391,7 +406,7 @@ Future reports and dashboards could show:
 - Changes between runs.
 - Failed jobs and warnings.
 
-Privacy features could include:
+Future privacy features could include:
 
 - Detecting personal information.
 - Hiding or hashing names, emails, phone numbers, and addresses.

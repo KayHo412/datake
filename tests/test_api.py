@@ -56,6 +56,7 @@ def test_api_upload_process_report_and_download(tmp_path: Path) -> None:
     processed = client.post(f"/files/{file_id}/process")
     assert processed.status_code == 202
     job = processed.json()
+    job = client.get(f"/jobs/{job['job_id']}").json()
     assert job["status"] == "completed"
     assert job["rows_in"] == 2
     assert job["rows_out"] == 1
@@ -92,3 +93,40 @@ def test_api_rejects_unsupported_upload(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 415
+
+
+def test_api_requires_configured_api_key(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("DATAKE_API_KEY", "test-secret")
+    client = TestClient(create_app(load_settings(write_settings(tmp_path))))
+
+    missing = client.get("/jobs/unknown")
+    authorized = client.get("/jobs/unknown", headers={"x-api-key": "test-secret"})
+
+    assert missing.status_code == 401
+    assert authorized.status_code == 404
+    monkeypatch.delenv("DATAKE_API_KEY")
+
+
+def test_dashboard_returns_processing_and_privacy_metrics(tmp_path: Path) -> None:
+    settings = load_settings(write_settings(tmp_path))
+    client = TestClient(create_app(settings))
+    uploaded = client.post(
+        "/files",
+        files={
+            "file": (
+                "customers.csv",
+                b"customer_id,email\n1,ada@example.com\n",
+                "text/csv",
+            )
+        },
+    )
+    client.post(f"/files/{uploaded.json()['file_id']}/process")
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["successful_runs"] == 1
+    assert payload["recent_runs"][0]["sensitive_columns"] == {
+        "email": "email"
+    }
