@@ -20,6 +20,7 @@ from datake.connector import (
 )
 from datake.delivery import DeliveryError
 from datake.history import HistorySummary, ProcessingHistory, ProcessingRun
+from datake.job_search import JobSearchStore, read_job_feed
 from datake.jobs import JobStore, run_job, watch_job
 from datake.main import (
     clean_tabular_file,
@@ -182,6 +183,16 @@ def build_parser() -> argparse.ArgumentParser:
     job_parser.add_argument("name", nargs="?", help="Configured job name")
     job_parser.add_argument("--dry-run", action="store_true")
     job_parser.add_argument("--limit", type=int, default=20)
+    jobs_parser = subparsers.add_parser(
+        "jobs", help="Import and track approved job listings"
+    )
+    jobs_parser.add_argument(
+        "action", choices=("import", "list", "update", "export")
+    )
+    jobs_parser.add_argument("value", nargs="?")
+    jobs_parser.add_argument("--status", default=None)
+    jobs_parser.add_argument("--notes", default=None)
+    jobs_parser.add_argument("--output", type=Path, default=None)
     export_parser = subparsers.add_parser(
         "export",
         help="Clean a file and deliver it to SQLite, HTTP, or S3",
@@ -585,6 +596,38 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Cancelled: {args.name}")
             return 0
         except (ConfigError, ValueError) as exc:
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
+
+    if args.command == "jobs":
+        try:
+            settings = load_runtime(args.config)
+            store = JobSearchStore(settings.history_db)
+            if args.action == "import":
+                if not args.value:
+                    parser.error("jobs import requires a local feed path")
+                count = store.import_listings(read_job_feed(Path(args.value)))
+                print(f"Imported {count} new listing(s).")
+            elif args.action == "list":
+                for listing in store.list_listings(status=args.status):
+                    print(
+                        f"{listing['listing_id']} {listing['status'].upper()} "
+                        f"{listing['title']} — {listing['company']} "
+                        f"({listing['location']})"
+                    )
+            elif args.action == "update":
+                if not args.value:
+                    parser.error("jobs update requires a listing ID")
+                store.update_listing(
+                    args.value, status=args.status, notes=args.notes
+                )
+                print(f"Updated: {args.value}")
+            else:
+                if not args.output:
+                    parser.error("jobs export requires --output")
+                print(f"Exported: {store.export_excel(args.output)}")
+            return 0
+        except (ConfigError, OSError, ValueError) as exc:
             print(f"FAILED: {exc}", file=sys.stderr)
             return 1
 

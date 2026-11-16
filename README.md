@@ -417,10 +417,10 @@ AI-assisted explanations may eventually summarize unusual patterns or suggest
 rules, but production cleaning decisions should remain controlled by explicit,
 repeatable rules.
 
-### Phase 17 — Job search and application checklist
+### Phase 17 — Job search and application checklist (complete)
 
-Datake may later support a personal job-search workflow using approved job
-APIs, feeds, or websites that permit automated collection. It should not bypass
+Datake now supports a local, review-first job-search workflow using approved
+CSV, JSON, or JSON Lines feeds. It does not bypass
 logins, CAPTCHA systems, paywalls, or other security controls.
 
 The planned workflow is:
@@ -439,6 +439,27 @@ Possible features include:
 - Export sheets for job matches, application tasks, applications, and a summary.
 - Add reminders without automatically submitting applications.
 
-The user should review and submit applications themselves. A future backend
-could expose job-search and application endpoints, but this is not implemented
-yet.
+Import a feed and deduplicate listings:
+
+```bash
+datake jobs import data/jobs.json
+datake jobs list
+```
+
+Track a listing manually:
+
+```bash
+datake jobs update LISTING_ID --status applied --notes "Sent CV"
+datake jobs list --status applied
+```
+
+Export the current checklist:
+
+```bash
+datake jobs export --output data/job-checklist.xlsx
+```
+
+The checklist is stored in the configured SQLite history database and contains
+job matches plus a status summary. Supported statuses are `new`, `reviewed`,
+`applied`, `interview`, and `rejected`. The user should review and submit
+applications themselves; Datake does not automatically apply.
