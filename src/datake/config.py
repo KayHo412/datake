@@ -57,6 +57,9 @@ class JobSettings:
     retries: int
     profile: str | None
     enabled: bool
+    webhook_url: str | None
+    notification_events: tuple[str, ...]
+    notification_retries: int
 
 
 @dataclass(frozen=True)
@@ -238,14 +241,26 @@ def _load_job(raw: Any) -> JobSettings:
     name = str(raw["name"])
     interval = float(raw.get("interval_seconds", 60))
     retries = int(raw.get("retries", 0))
-    if interval <= 0 or retries < 0:
+    notification_retries = int(raw.get("notification_retries", 0))
+    if interval <= 0 or retries < 0 or notification_retries < 0:
         raise ConfigError(f"Job {name!r} has invalid interval or retries")
+    events = raw.get("notification_events") or ["success", "failure", "cancelled"]
+    if not isinstance(events, list) or any(
+        event not in {"success", "failure", "cancelled"} for event in events
+    ):
+        raise ConfigError(
+            f"Job {name!r} notification_events must contain only "
+            "success, failure, or cancelled"
+        )
     return JobSettings(
         name=name,
         interval=interval,
         retries=retries,
         profile=str(raw["profile"]) if raw.get("profile") else None,
         enabled=bool(raw.get("enabled", True)),
+        webhook_url=str(raw["webhook_url"]) if raw.get("webhook_url") else None,
+        notification_events=tuple(str(event) for event in events),
+        notification_retries=notification_retries,
     )
 
 

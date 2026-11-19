@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -9,6 +10,9 @@ from datetime import UTC, datetime
 
 from datake.automation import process_new_files
 from datake.config import JobSettings, Settings, load_settings
+from datake.notifications import NotificationError, notify_job_run
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -164,6 +168,17 @@ def run_job(settings: Settings, name: str, *, dry_run: bool = False) -> JobRun:
         last_error,
     )
     store.record(run)
+    try:
+        notify_job_run(
+            settings,
+            name,
+            run,
+            job.webhook_url,
+            job.notification_events,
+            job.notification_retries,
+        )
+    except NotificationError as exc:
+        logger.error("Job %s notification failed: %s", name, exc)
     return run
 
 

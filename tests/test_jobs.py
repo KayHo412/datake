@@ -61,3 +61,46 @@ def test_dry_run_keeps_input_and_does_not_write_processed_file(tmp_path: Path) -
     assert run.status == "success"
     assert source.exists()
     assert not list(settings.processed_dir.glob("*"))
+
+
+def test_job_success_notification_posts_outcome(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = write_settings(tmp_path)
+    raw = json.loads(config.read_text(encoding="utf-8"))
+    raw["connectors"] = {"allowed_hosts": ["hooks.example.test"]}
+    raw["jobs"][0].update(
+        {
+            "webhook_url": "https://hooks.example.test/datake",
+            "notification_events": ["success"],
+        }
+    )
+    config.write_text(json.dumps(raw), encoding="utf-8")
+    settings = load_settings(config)
+    settings.input_dir.joinpath("customers.csv").write_text(
+        "id,name\n1,Ada\n", encoding="utf-8"
+    )
+    captured: dict[str, object] = {}
+
+    class Response:
+        status = 204
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = request.data
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr("datake.notifications.urlopen", fake_urlopen)
+
+    run_job(settings, "customers")
+
+    payload = json.loads(captured["body"])
+    assert payload["event"] == "job.success"
+    assert payload["processed_count"] == 1
+    assert captured["timeout"] == 15

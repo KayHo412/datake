@@ -13,7 +13,9 @@ from pathlib import Path
 from threading import Lock
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from datake.automation import write_report
 from datake.config import Settings, load_settings
@@ -33,6 +35,7 @@ class ApiJob:
     status: str
     result: ProcessResult | None = None
     report_path: Path | None = None
+    output_path: Path | None = None
     error: str | None = None
 
 
@@ -79,7 +82,7 @@ class ApiStore:
 
     def save_job(self, job: ApiJob) -> None:
         clean = job.result.clean_result if job.result else None
-        output = job.result.output_path if job.result else None
+        output = job.output_path or (job.result.output_path if job.result else None)
         with sqlite3.connect(self.path) as connection:
             connection.execute(
                 """
@@ -120,6 +123,7 @@ class ApiStore:
             filename=row[2],
             status=row[3],
             report_path=Path(row[7]) if row[7] else None,
+            output_path=Path(row[8]) if row[8] else None,
             error=row[9],
         )
 
@@ -135,6 +139,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     lock = Lock()
 
     app = FastAPI(title="Datake API", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     def require_api_key(request: Request) -> None:
         expected = os.getenv("DATAKE_API_KEY")
@@ -281,12 +292,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if source is None:
             raise HTTPException(status_code=404, detail="File not found")
         job = next((item for item in jobs.values() if item.file_id == file_id), None)
-        if job is None or job.result is None or job.result.output_path is None:
+        if job is None:
+            raise HTTPException(status_code=404, detail="Processed file not found")
+        output_path = job.output_path or (
+            job.result.output_path if job.result else None
+        )
+        if (
+            job.status != "completed"
+            or output_path is None
+            or not output_path.is_file()
+        ):
             raise HTTPException(status_code=404, detail="Processed file not found")
         return FileResponse(
-            job.result.output_path,
-            media_type=_media_type(job.result.output_path),
-            filename=job.result.output_path.name,
+            output_path,
+            media_type=_media_type(output_path),
+            filename=output_path.name,
         )
 
     def process_api_job(job_id: str, source: Path) -> None:
@@ -296,6 +316,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             result = process_file(source, runtime, write_output=True)
             job.result = result
+            job.output_path = result.output_path
             job.status = "completed" if result.succeeded else "failed"
             job.error = result.error
             if result.succeeded:
@@ -347,3 +368,7 @@ def _media_type(path: Path) -> str:
 
 
 app = create_app()
+
+frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")

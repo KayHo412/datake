@@ -12,10 +12,12 @@ env/
 
 # Packaging
 build/
-dist/
 *.egg-info/
 *.egg
 .eggs/
+
+# Frontend
+node_modules/
 
 # Testing / lint
 .pytest_cache/

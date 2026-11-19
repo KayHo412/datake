@@ -2,10 +2,11 @@
 
 Automated data processing tool for CSV and Excel files.
 
-This project is being built in phases. **Phase 12** is in progress: read,
-validate, profile, compare, clean, merge, monitor, and inspect processing
-history using reusable named profiles and a safe REST/JSON connector across CSV,
-Excel (`.xlsx`), JSON, JSON Lines, and Parquet files.
+This project is being built in phases. **Phases 1–17 are implemented**: read,
+validate, profile, compare, clean, merge, monitor, inspect processing history,
+collect from approved sources, deliver cleaned data, run repeatable jobs, expose
+a protected API, and maintain a review-first job checklist across CSV, Excel
+(`.xlsx`), JSON, JSON Lines, and Parquet files.
 
 ## Setup
 
@@ -186,7 +187,8 @@ Start the local server from the project directory:
 uvicorn datake.api:app --reload
 ```
 
-Open the interactive API page at
+Open the integrated web interface at
+[`http://127.0.0.1:8000`](http://127.0.0.1:8000), or the interactive API page at
 [`http://127.0.0.1:8000/docs`](http://127.0.0.1:8000/docs). The MVP supports:
 
 - `GET /health` — check that the server is running.
@@ -201,6 +203,18 @@ database, while processing runs in a FastAPI background task. Clients should
 poll `GET /jobs/{job_id}` until the status is `completed` or `failed`.
 Set `DATAKE_API_KEY` to require an `X-API-Key` header on all file, webhook, job,
 and download endpoints; `/health` remains public.
+
+For frontend development, run Vite separately:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [`http://127.0.0.1:5173`](http://127.0.0.1:5173). Vite proxies `/api`
+requests to the FastAPI server on port `8000`. Run `npm run build` to rebuild
+the integrated UI served by FastAPI at `/`.
 
 ## Backend MVP
 
@@ -228,9 +242,9 @@ and JSON report. API job metadata survives server restarts.
 ## Future roadmap
 
 Datake currently has a command-line tool and a small backend MVP that read,
-check, profile, compare, clean, and report on CSV and Excel data. The remaining
-capabilities below are planned future development and are not part of the
-current implementation.
+check, profile, compare, clean, report, collect, deliver, and automate data.
+The completed phases below describe the current implementation; future work is
+called out explicitly within each phase.
 
 ### Phase 9 — Understand data before changing it (complete)
 
@@ -349,40 +363,44 @@ history behavior as `watch`.
 - Jobs support retry counts, dry runs, cancellation, and persistent SQLite
   run history.
 - Use `job status` to inspect attempts, processed-file counts, and outcomes.
+- Jobs can optionally POST success, failure, and cancellation events to an
+  approved webhook. Notification delivery failures are logged without changing
+  the processing result.
 
-Email, Slack, Teams, and webhook alerts remain future work.
+Configure a webhook per job:
+
+```json
+{
+  "name": "input_cleanup",
+  "webhook_url": "https://hooks.example.test/datake",
+  "notification_events": ["success", "failure"],
+  "notification_retries": 2
+}
+```
+
+Webhook hosts must be included in `connectors.allowed_hosts` when host
+allowlisting is enabled. Email, Slack, and Teams adapters remain future work.
 
 ### Phase 15 — Backend API hardening (complete)
 
 Expose Datake through a web backend so a website or another application can
-use it. The first general job workflow is planned to support:
+use it. The current API supports file uploads, queued processing, persistent
+metadata, and optional API-key protection:
 
 ```text
 POST /files
-POST /jobs
-GET  /jobs/{job_id}
-GET  /jobs/{job_id}/result
-GET  /jobs/{job_id}/report
+POST /files/{file_id}/process
+GET  /files/{file_id}
+GET  /files/{file_id}/download
+GET  /dashboard
 ```
 
-The `POST /jobs` request should identify the source:
+Processing runs in the background so a web request does not need to wait for
+completion. API metadata is persisted in SQLite, and optional `DATAKE_API_KEY`
+protection is available for non-health endpoints. Collection connectors and
+repeatable jobs remain available through their dedicated CLI workflows.
 
-```json
-{
-  "source": {
-    "type": "website",
-    "url": "https://approved.example/products"
-  },
-  "action": "collect_and_clean"
-}
-```
-
-The same job system should later support uploaded files, APIs, and databases.
-Large jobs run in the background so a web request does not need to wait for
-processing to finish. API metadata is persisted in SQLite, and optional
-`DATAKE_API_KEY` protection is available for non-health endpoints.
-
-### Phase 16 — Reports, dashboards, and privacy
+### Phase 16 — Reports, dashboards, and privacy (complete)
 
 Reports now include conservative, name-based privacy metadata without copying
 cell values. The API also exposes `GET /dashboard`, which returns aggregate
@@ -423,14 +441,14 @@ Datake now supports a local, review-first job-search workflow using approved
 CSV, JSON, or JSON Lines feeds. It does not bypass
 logins, CAPTCHA systems, paywalls, or other security controls.
 
-The planned workflow is:
+The implemented workflow is:
 
 ```text
 approved job sources -> find matching jobs -> remove duplicates
 -> track applications -> export an Excel checklist
 ```
 
-Possible features include:
+Supported features include:
 
 - Search by job title, location, remote status, salary, skills, and posting date.
 - Remove duplicate job listings and remember jobs already reviewed.
