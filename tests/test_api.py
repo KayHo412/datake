@@ -84,6 +84,44 @@ def test_api_webhook_writes_json_input(tmp_path: Path) -> None:
     assert json.loads(path.read_text(encoding="utf-8"))[0]["customer_id"] == 1
 
 
+def test_job_listing_import_filter_update_and_export(tmp_path: Path) -> None:
+    settings = load_settings(write_settings(tmp_path))
+    client = TestClient(create_app(settings))
+
+    imported = client.post(
+        "/jobs/listings/import",
+        files={
+            "file": (
+                "jobs.json",
+                b'[{"title":"Data Analyst","company":"Example","location":"Remote","url":"https://example.test/jobs/1"}]',
+                "application/json",
+            )
+        },
+    )
+    assert imported.status_code == 201
+    assert imported.json()["imported"] == 1
+
+    listings = client.get("/jobs/listings").json()["listings"]
+    assert len(listings) == 1
+    listing_id = listings[0]["listing_id"]
+
+    updated = client.patch(
+        f"/jobs/listings/{listing_id}",
+        json={"status": "applied", "notes": "Sent CV"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "applied"
+
+    filtered = client.get("/jobs/listings?status=applied").json()["listings"]
+    assert filtered[0]["notes"] == "Sent CV"
+
+    exported = client.post("/jobs/listings/export")
+    assert exported.status_code == 200
+    assert exported.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
 def test_api_rejects_unsupported_upload(tmp_path: Path) -> None:
     client = TestClient(create_app(load_settings(write_settings(tmp_path))))
 

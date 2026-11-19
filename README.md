@@ -393,6 +393,10 @@ POST /files/{file_id}/process
 GET  /files/{file_id}
 GET  /files/{file_id}/download
 GET  /dashboard
+GET  /jobs/listings
+POST /jobs/listings/import
+PATCH /jobs/listings/{listing_id}
+POST /jobs/listings/export
 ```
 
 Processing runs in the background so a web request does not need to wait for

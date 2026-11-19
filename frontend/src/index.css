@@ -82,6 +82,20 @@ tbody tr:last-child td { border-bottom: 0; }
 .job-metrics strong { display: block; margin-top: 4px; font-size: 18px; }
 .job-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .job-actions .primary-button { margin: 0; }
+ .jobs-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.feed-import { display: flex; align-items: center; gap: 8px; }
+.feed-import input { max-width: 220px; font-size: 12px; color: #657184; }
+.feed-import .primary-button { margin: 0; }
+.jobs-toolbar > .secondary-button { margin-right: 0; }
+.job-filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.job-filter-row label { font-size: 12px; color: #667085; }
+.job-filter-row select, .row-status { height: 34px; border: 1px solid #d8dee7; border-radius: 6px; background: #fff; color: #344054; font-size: 12px; padding: 0 8px; }
+.jobs-table td { vertical-align: middle; }
+.jobs-table td strong { display: block; }
+.table-secondary { display: block; margin-top: 3px; color: #8791a0; font-size: 11px; }
+.notes-input { width: 190px; height: 34px; border: 1px solid #d8dee7; border-radius: 6px; padding: 0 8px; font-size: 12px; }
+.job-link { color: #29405f; font-weight: 600; text-decoration: none; }
+.job-link:hover { text-decoration: underline; }
 .settings-panel label { display: grid; gap: 8px; margin: 18px; color: #4d596a; font-size: 12px; font-weight: 600; }
 .settings-panel input { height: 40px; border: 1px solid #d8dee7; border-radius: 6px; padding: 0 10px; background: #ffffff; color: #172033; }
 .spin { animation: spin 1s linear infinite; }

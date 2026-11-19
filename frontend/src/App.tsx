@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Activity,
   AlertCircle,
+  BriefcaseBusiness,
   CheckCircle2,
   Download,
   FileSpreadsheet,
@@ -32,6 +33,19 @@ type Dashboard = {
   recent_runs: DashboardRun[]
 }
 
+type JobListing = {
+  listing_id: string
+  title: string
+  company: string
+  location: string
+  url: string
+  remote: string
+  salary: string
+  posted_at: string
+  status: 'new' | 'reviewed' | 'applied' | 'interview' | 'rejected' | string
+  notes: string
+}
+
 type Job = {
   job_id: string
   file_id: string
@@ -45,7 +59,7 @@ type Job = {
 }
 
 function App() {
-  const [page, setPage] = useState<'dashboard' | 'files' | 'settings'>('dashboard')
+  const [page, setPage] = useState<'dashboard' | 'files' | 'jobs' | 'settings'>('dashboard')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [dashboardError, setDashboardError] = useState('')
   const [apiKey, setApiKey] = useState(localStorage.getItem('datake_api_key') || '')
@@ -53,6 +67,11 @@ function App() {
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [job, setJob] = useState<Job | null>(null)
+  const [listings, setListings] = useState<JobListing[]>([])
+  const [jobFilter, setJobFilter] = useState('all')
+  const [jobFeed, setJobFeed] = useState<File | null>(null)
+  const [jobsLoading, setJobsLoading] = useState(false)
+  const [jobMessage, setJobMessage] = useState('')
   const [message, setMessage] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -73,6 +92,79 @@ function App() {
     }
   }
 
+  const loadJobs = async (status = 'all') => {
+    setJobsLoading(true)
+    setJobMessage('')
+    try {
+      const query = status === 'all' ? '' : `?status=${encodeURIComponent(status)}`
+      const response = await fetch(`${API_BASE}/jobs/listings${query}`, { headers: headers() })
+      if (!response.ok) throw new Error(`Request failed (${response.status})`)
+      const payload = await response.json()
+      setListings(payload.listings || [])
+    } catch (error) {
+      setJobMessage(error instanceof Error ? error.message : 'Unable to load jobs')
+    } finally {
+      setJobsLoading(false)
+    }
+  }
+
+  const importJobs = async () => {
+    if (!jobFeed) return
+    setJobsLoading(true)
+    setJobMessage('')
+    try {
+      const form = new FormData()
+      form.append('file', jobFeed)
+      const importHeaders = apiKey ? { 'X-API-Key': apiKey } : undefined
+      const response = await fetch(`${API_BASE}/jobs/listings/import`, {
+        method: 'POST',
+        headers: importHeaders,
+        body: form,
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.detail || 'Import failed')
+      setJobFeed(null)
+      setJobMessage(`Imported ${payload.imported} new listing(s)`)
+      await loadJobs(jobFilter)
+    } catch (error) {
+      setJobMessage(error instanceof Error ? error.message : 'Unable to import jobs')
+    } finally {
+      setJobsLoading(false)
+    }
+  }
+
+  const updateListing = async (listingId: string, status: string, notes: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/jobs/listings/${listingId}`, {
+        method: 'PATCH',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, notes }),
+      })
+      if (!response.ok) throw new Error('Unable to update listing')
+      await loadJobs(jobFilter)
+    } catch (error) {
+      setJobMessage(error instanceof Error ? error.message : 'Unable to update listing')
+    }
+  }
+
+  const exportJobs = async () => {
+    const response = await fetch(`${API_BASE}/jobs/listings/export`, {
+      method: 'POST',
+      headers: headers(),
+    })
+    if (!response.ok) {
+      setJobMessage('Unable to export the checklist')
+      return
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'job_checklist.xlsx'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -84,6 +176,7 @@ function App() {
     }
     checkHealth()
     loadDashboard()
+    loadJobs('all')
   }, [])
 
   useEffect(() => {
@@ -177,6 +270,9 @@ function App() {
           <button className={page === 'files' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('files')}>
             <FileSpreadsheet size={18} /> Files
           </button>
+          <button className={page === 'jobs' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('jobs')}>
+            <BriefcaseBusiness size={18} /> Jobs
+          </button>
           <button className={page === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('settings')}>
             <Settings size={18} /> Settings
           </button>
@@ -190,7 +286,7 @@ function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">Workspace</p>
-            <h1>{page === 'dashboard' ? 'Dashboard' : page === 'files' ? 'File processing' : 'Settings'}</h1>
+            <h1>{page === 'dashboard' ? 'Dashboard' : page === 'files' ? 'File processing' : page === 'jobs' ? 'Job listings' : 'Settings'}</h1>
           </div>
           <button className="icon-button" aria-label="Search"><Search size={18} /></button>
         </header>
@@ -288,6 +384,92 @@ function App() {
                 )}
               </section>
             </div>
+          )}
+
+          {page === 'jobs' && (
+            <>
+              <div className="jobs-toolbar">
+                <div className="feed-import">
+                  <input
+                    type="file"
+                    accept=".csv,.json,.jsonl"
+                    onChange={(event) => setJobFeed(event.target.files?.[0] || null)}
+                  />
+                  <button className="primary-button" disabled={!jobFeed || jobsLoading} onClick={importJobs}>
+                    <Upload size={16} /> Import feed
+                  </button>
+                </div>
+                <button className="secondary-button" onClick={exportJobs}><Download size={16} /> Export Excel</button>
+              </div>
+
+              {jobMessage && <div className="notice error"><AlertCircle size={16} /> {jobMessage}</div>}
+
+              <div className="job-filter-row">
+                <label htmlFor="job-status-filter">Status</label>
+                <select
+                  id="job-status-filter"
+                  value={jobFilter}
+                  onChange={(event) => {
+                    setJobFilter(event.target.value)
+                    loadJobs(event.target.value)
+                  }}
+                >
+                  <option value="all">All listings</option>
+                  <option value="new">New</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="applied">Applied</option>
+                  <option value="interview">Interview</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+
+              <section className="panel">
+                <div className="panel-header"><div><h2>Job listings</h2><p>{listings.length} listing(s)</p></div></div>
+                <div className="table-wrap">
+                  <table className="jobs-table">
+                    <thead><tr><th>Position</th><th>Company</th><th>Location</th><th>Status</th><th>Notes</th><th>Link</th></tr></thead>
+                    <tbody>
+                      {jobsLoading ? (
+                        <tr><td colSpan={6} className="empty">Loading listings...</td></tr>
+                      ) : listings.map((listing) => (
+                        <tr key={listing.listing_id}>
+                          <td><strong>{listing.title}</strong><span className="table-secondary">{listing.posted_at || 'Date not provided'}</span></td>
+                          <td>{listing.company || '—'}<span className="table-secondary">{listing.remote ? `Remote: ${listing.remote}` : ''}</span></td>
+                          <td>{listing.location || '—'}<span className="table-secondary">{listing.salary || ''}</span></td>
+                          <td>
+                            <select
+                              className="row-status"
+                              value={listing.status}
+                              onChange={(event) => updateListing(listing.listing_id, event.target.value, listing.notes)}
+                            >
+                              <option value="new">New</option>
+                              <option value="reviewed">Reviewed</option>
+                              <option value="applied">Applied</option>
+                              <option value="interview">Interview</option>
+                              <option value="rejected">Rejected</option>
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              className="notes-input"
+                              defaultValue={listing.notes}
+                              aria-label={`Notes for ${listing.title}`}
+                              onBlur={(event) => {
+                                if (event.target.value !== listing.notes) {
+                                  updateListing(listing.listing_id, listing.status, event.target.value)
+                                }
+                              }}
+                            />
+                          </td>
+                          <td>{listing.url ? <a className="job-link" href={listing.url} target="_blank" rel="noreferrer">Open</a> : '—'}</td>
+                        </tr>
+                      ))}
+                      {!jobsLoading && !listings.length && <tr><td colSpan={6} className="empty">No job listings found</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
           )}
 
           {page === 'settings' && (

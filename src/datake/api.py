@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from datake.automation import write_report
 from datake.config import Settings, load_settings
 from datake.history import ProcessingHistory
+from datake.job_search import JobSearchStore, read_job_feed
 from datake.processor import ProcessResult, process_file
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -183,6 +184,94 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "failed_runs": summary.failed,
             "recent_runs": reports,
         }
+
+    @app.get("/jobs/listings")
+    def list_job_listings(
+        request: Request,
+        status: str | None = None,
+    ) -> dict[str, object]:
+        require_api_key(request)
+        store = JobSearchStore(runtime.history_db)
+        return {"listings": store.list_listings(status=status)}
+
+    @app.post("/jobs/listings/import", status_code=201)
+    async def import_job_listings(
+        request: Request,
+        file: UploadFile = File(...),
+    ) -> dict[str, object]:
+        require_api_key(request)
+        filename = Path(file.filename or "").name
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {".csv", ".json", ".jsonl"}:
+            raise HTTPException(
+                status_code=415,
+                detail="Job feed must be .csv, .json, or .jsonl",
+            )
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File is too large")
+        feed_path = (
+            runtime.project_root
+            / "data"
+            / "api_uploads"
+            / f"jobs_{uuid.uuid4().hex}{suffix}"
+        )
+        feed_path.parent.mkdir(parents=True, exist_ok=True)
+        feed_path.write_bytes(content)
+        try:
+            store = JobSearchStore(runtime.history_db)
+            inserted = store.import_listings(read_job_feed(feed_path))
+            return {"imported": inserted, "filename": filename}
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        finally:
+            feed_path.unlink(missing_ok=True)
+
+    @app.patch("/jobs/listings/{listing_id}")
+    async def update_job_listing(
+        listing_id: str,
+        request: Request,
+    ) -> dict[str, object]:
+        require_api_key(request)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="JSON object required")
+        status_value = payload.get("status")
+        notes = payload.get("notes")
+        if status_value is not None and not isinstance(status_value, str):
+            raise HTTPException(status_code=400, detail="Status must be a string")
+        if notes is not None and not isinstance(notes, str):
+            raise HTTPException(status_code=400, detail="Notes must be a string")
+        try:
+            JobSearchStore(runtime.history_db).update_listing(
+                listing_id,
+                status=status_value,
+                notes=notes,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        listings = JobSearchStore(runtime.history_db).list_listings()
+        listing = next(
+            (item for item in listings if item["listing_id"] == listing_id),
+            None,
+        )
+        if listing is None:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        return listing
+
+    @app.post("/jobs/listings/export")
+    def export_job_listings(request: Request) -> FileResponse:
+        require_api_key(request)
+        output = runtime.project_root / "data" / "reports" / "job_checklist.xlsx"
+        JobSearchStore(runtime.history_db).export_excel(output)
+        return FileResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename="job_checklist.xlsx",
+        )
 
     @app.post("/files", status_code=201)
     async def upload_file(
